@@ -561,7 +561,9 @@ class App:
 
     def _simulate(self):
         self.show("control")
-        self._tool("Simulation", cli("simulate"))
+        # On the streaming PC, the test drives OBS for real, unless the live director already does
+        live_obs = self.var("local.role").get() == "streamer" and not self.group.running()
+        self._tool("Simulation", cli("simulate", "--obs") if live_obs else cli("simulate"))
 
     def _prepare_obs(self):
         self._tool("Prepare OBS", cli("obs-setup", "--split", "--game-capture", str(self.var("local.player_id").get())))

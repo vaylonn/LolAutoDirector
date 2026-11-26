@@ -67,8 +67,9 @@ players are in two different fights at once.
    ```
 
 To check the install without playing, open **Control room** and click *Test without playing*:
-a one-minute simulated game with two fake players runs the full pipeline and prints every camera decision
-in the log (OBS is not touched).
+a one-minute simulated game with two fake players runs the full pipeline: OBS switches between the scenes of
+players A and B (and `SPLIT`), and every camera decision shows up in the log. Clicking a scene yourself in OBS
+during the test pauses it for 20 s, as in a real game.
 
 ### 2. Set up each teammate
 
@@ -168,7 +169,7 @@ Every part is also available on the command line (`python -m lolauto <command>`,
 | *(none)* or `gui` | opens the app |
 | `director [-v] [--dry-run]` | runs the director (streaming PC) |
 | `agent --id A..E` | runs a player's agent (`--once` checks the current game and exits) |
-| `simulate` | full simulated game, no game or OBS needed (about 1 minute) |
+| `simulate [--obs]` | full simulated game, no game needed (about 1 minute); `--obs` also switches the OBS scenes |
 | `obs-setup [--split]` | creates the OBS scenes |
 | `vision-debug` | saves annotated minimap captures for calibration |
 

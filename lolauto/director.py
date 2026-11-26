@@ -251,6 +251,9 @@ def main(argv=None) -> int:
     ap.add_argument("--config", help="path to config.toml")
     ap.add_argument("--dry-run", action="store_true", help="send nothing to OBS, print the decisions")
     ap.add_argument("--listen-port", type=int, help="overrides [network].director_port")
+    ap.add_argument("--no-vision", action="store_true", help="do not read the minimaps (simulation)")
+    ap.add_argument("--take-over", action="store_true",
+                    help="show the first player's scene at start, even if OBS is on another scene (simulation)")
     ap.add_argument("-v", "--verbose", action="store_true", help="print the scores every second")
     ap.add_argument("--log-file", help="also write the log to this file (e.g. logs/director.log)")
     args = ap.parse_args(argv)
@@ -267,7 +270,9 @@ def main(argv=None) -> int:
     ctl = (DryRunController(scenes[first]) if args.dry_run else
            ObsController(cfg.obs.host, cfg.obs.port, cfg.obs.password))
     vision = None
-    if not args.dry_run and cfg.vision.enabled:
+    if args.take_over and not args.dry_run:
+        ctl.set(scenes[first])
+    if not args.dry_run and not args.no_vision and cfg.vision.enabled:
         from .vision import VisionRunner
 
         vision = VisionRunner(cfg.vision, dict(host=cfg.obs.host, port=cfg.obs.port,
