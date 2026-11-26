@@ -117,6 +117,19 @@ def check_local(cfg: Config, local: LocalSettings) -> list[str]:
     return warn
 
 
+def kill_tree(p: subprocess.Popen) -> None:
+    """Stops a program AND the programs it started (the simulation starts 5 of them).
+
+    On Windows, terminate() only kills the parent: its children would keep running and hold
+    their network ports, so the next simulation could not start.
+    """
+    if os.name == "nt":
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"], capture_output=True, creationflags=flags)
+    else:
+        p.terminate()
+
+
 @dataclass
 class ProcessGroup:
     """Programs started by the app; their output goes to a queue (for display)."""
@@ -143,7 +156,7 @@ class ProcessGroup:
     def stop(self) -> None:
         for _, p in self.procs:
             if p.poll() is None:
-                p.terminate()
+                kill_tree(p)
         for _, p in self.procs:
             try:
                 p.wait(timeout=3)

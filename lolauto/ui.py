@@ -144,6 +144,7 @@ class App:
         self.cfg = cfg or load_config()
         self.local = local or LocalSettings.load()
         self.group = ProcessGroup()
+        self.tools: dict[str, ProcessGroup] = {}     # simulation, calibration… (one run each)
         self.root = ctk.CTk(fg_color=C["bg"])
         self.root.title("LoL Auto Director")
         self.root.geometry("1180x760")
@@ -541,9 +542,14 @@ class App:
         self._render()
 
     def _tool(self, name, argv, open_dir=None):
+        busy = self.tools.get(name)
+        if busy is not None and busy.running():
+            self._print(f"{name} is already running")
+            return
         if not self._save(quiet=True):
             return
         g = ProcessGroup(lines=self.group.lines)
+        self.tools[name] = g
         g.start(name, argv)
         self._print(f"{name} started")
         if open_dir is not None:
@@ -671,6 +677,8 @@ class App:
 
     def _on_close(self):
         self.group.stop()
+        for g in self.tools.values():
+            g.stop()
         self.root.destroy()
 
     def run(self):

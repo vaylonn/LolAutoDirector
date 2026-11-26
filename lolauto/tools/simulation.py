@@ -10,12 +10,19 @@ with no SPLIT (same fight) → SPLIT on two separate fights → back to a single
 from __future__ import annotations
 
 import re
+import socket
 import subprocess
 import threading
 import time
 
 from lolauto.paths import BASE, cli
-PORT_A, PORT_B, UDP = 12999, 13000, 15005
+
+
+def free_port(kind=socket.SOCK_STREAM) -> int:
+    """A port nobody uses right now, so two simulations (or a live director) never collide."""
+    with socket.socket(socket.AF_INET, kind) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 DURATION = 66
 EXPECTED = ["POV_B", "POV_A", "POV_B", "POV_A", "SPLIT"]
 # 34-40 s: SHARED fight (Alice's kill with Bob's assist) → no SPLIT (split_mode = separate_fights)
@@ -29,6 +36,7 @@ def spawn(args, **kw):
 
 
 def main(argv=None) -> int:
+    PORT_A, PORT_B, UDP = free_port(), free_port(), free_port(socket.SOCK_DGRAM)
     procs = [spawn(["mock", "--who", "A", "--port", str(PORT_A)]),
              spawn(["mock", "--who", "B", "--port", str(PORT_B)])]
     time.sleep(0.7)
@@ -53,6 +61,11 @@ def main(argv=None) -> int:
     finally:
         for p in procs:
             p.terminate()
+        for p in procs:
+            try:
+                p.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                p.kill()
 
     # format: "SWITCH → B (POV_B) | A=.. B=..", extract the scene name
     scenes = [m.group(1).split()[0] for ln in lines if (m := re.search(r"SWITCH → \w+ \(([^)]+)\)", ln))]
