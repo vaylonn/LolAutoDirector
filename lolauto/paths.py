@@ -1,4 +1,4 @@
-"""Chemins et commande de lancement, valables en mode source ET en exécutable (PyInstaller)."""
+"""Paths and relaunch command, valid both from source and as a PyInstaller executable."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ from pathlib import Path
 
 FROZEN = bool(getattr(sys, "frozen", False))
 
-# Dossier « de travail » : celui de l'exécutable, ou la racine du projet en mode source.
-# config.toml, logs/ et data/ y sont lus / écrits.
+# Working folder: the executable's folder, or the project root when running from source.
+# config.toml, logs/ and data/ are read and written there.
 BASE = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent.parent
 
 
 def cli(*args: str) -> list[str]:
-    """Commande pour relancer ce programme avec une sous-commande (ex. cli("director", "-v"))."""
+    """Command that relaunches this program with a sub-command (e.g. cli("director", "-v"))."""
     if FROZEN:
         return [sys.executable, *args]
     return [sys.executable, "-m", "lolauto", *args]

@@ -52,7 +52,7 @@ split_enter_after = 1.5                  # …for N s → SPLIT
 split_exit_below = 1.5                   # leave SPLIT when the lower score drops below this…
 split_min_hold = 6.0                     # …and SPLIT has been shown for N s
 manual_pause = 20.0                      # manual scene change → automation pauses for N s
-split_mode = "combats_separes"           # "combats_separes" (SPLIT only for separate fights) or "toujours" (always)
+split_mode = "separate_fights"           # "separate_fights" (SPLIT only for separate fights) or "always"
 
 [scoring]
 window = 3.0

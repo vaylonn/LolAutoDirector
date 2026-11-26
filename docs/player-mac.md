@@ -27,7 +27,7 @@ You do not stream anything yourself. The streamer gives you your **player letter
    - **Local Network**: allow OBS, or the streaming PC will not see your image.
 5. *Tools › DistroAV NDI Output Settings*: tick *Main Output* and give it a name, e.g. `MACBOOK`.
 
-Tell the streamer the name you picked: they select it as your *Source vidéo* in their app.
+Tell the streamer the name you picked: they select it as your *Video source* in their app.
 
 ## 3. Install the agent (once)
 
@@ -43,7 +43,7 @@ Tell the streamer the name you picked: they select it as your *Source vidéo* in
 2. Double-click **`mac/start.command`**. It asks for your letter the first time and remembers it.
    Keep the Terminal window open: it also stops the Mac from going to sleep. You can start it before the game;
    it waits on its own.
-3. Launch your game. The window shows `Partie détectée` (game detected).
+3. Launch your game. The window shows `Game detected`.
 
 To stop, close the Terminal window.
 
@@ -55,7 +55,7 @@ To stop, close the Terminal window.
 | Your image is black on their side | *Screen Recording* permission for OBS, then restart OBS |
 | The image stutters | Ethernet, OBS at 1080p (not Retina), Mac on power |
 | The camera never comes to you | Use the streamer's exact `config.toml` (IP and token), and check your letter |
-| `Partie détectée` never shows | Normal outside a game: the game API only exists during a match |
+| `Game detected` never shows | Normal outside a game: the game API only exists during a match |
 | The Mac runs hot or slow | Send NDI at 1080p30 or 720p60, cap League's FPS |
 
 Your log is in `logs/agent_<letter>.log`. Send it to the streamer if something is off.

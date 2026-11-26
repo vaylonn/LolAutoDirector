@@ -1,8 +1,8 @@
-"""Interface du lanceur (customtkinter) — pensée comme une régie de télé.
+"""The app's interface (customtkinter), designed like a TV control room.
 
-Chaque joueur est une « caméra » avec un voyant comme sur un mélangeur broadcast :
-rouge = à l'antenne, vert = en partie, gris = hors ligne. La page Régie est une mosaïque
-de ces caméras, mise à jour en direct à partir des journaux du directeur.
+Each player is a "camera" with a tally light, as on a broadcast switcher:
+red = on air, green = in game, grey = offline. The Control room page is a wall of these
+cameras, updated live from the director's logs.
 """
 
 from __future__ import annotations
@@ -26,9 +26,9 @@ from .launcher import (CONFIG_FILE, RESOLUTIONS, LocalSettings, ProcessGroup, bu
                        check_local, config_values, is_noise, load_config, local_ip, parse_line, values_to_config)
 from .paths import BASE, cli
 
-# --------------------------------------------------------------------------- jetons de design
+# --------------------------------------------------------------------------- design tokens
 C = {
-    "bg": "#141922",          # salle de régie : ardoise bleutée, pas du noir pur
+    "bg": "#141922",          # control room: blue-grey slate, not pure black
     "side": "#10141C",
     "panel": "#1B2130",
     "raised": "#232B3C",
@@ -36,16 +36,16 @@ C = {
     "text": "#E7EBF3",
     "muted": "#8E98AD",
     "faint": "#5C667B",
-    "program": "#E5484D",     # voyant rouge : à l'antenne
-    "preview": "#3DD68C",     # voyant vert : en partie, prêt
-    "idle": "#465066",        # voyant éteint : hors ligne
-    "action": "#7AA2F7",      # boutons et sélection
+    "program": "#E5484D",     # red tally: on air
+    "preview": "#3DD68C",     # green tally: in game, ready
+    "idle": "#465066",        # tally off: offline
+    "action": "#7AA2F7",      # buttons and selection
     "action_hover": "#94B5FA",
-    "action_deep": "#3B57B0",  # sélection des boutons segmentés (texte clair lisible dessus)
+    "action_deep": "#3B57B0",  # segmented button selection (light text stays readable)
     "action_deep_hover": "#4A67C4",
     "on_action": "#0F1420",
 }
-SCORE_MAX = 10.0              # un score de 10 remplit la barre
+SCORE_MAX = 10.0              # a score of 10 fills the bar
 
 
 def _family(*candidates: str) -> str:
@@ -82,7 +82,7 @@ def _open_folder(path) -> None:
         subprocess.Popen(["xdg-open", str(path)])
 
 
-# --------------------------------------------------------------------------- caméra (tuile de la mosaïque)
+# --------------------------------------------------------------------------- camera (wall tile)
 class CameraTile(ctk.CTkFrame):
     def __init__(self, master, app: "App", pid: str):
         super().__init__(master, fg_color=C["panel"], corner_radius=14, border_width=2, border_color=C["line"])
@@ -97,7 +97,7 @@ class CameraTile(ctk.CTkFrame):
         info.pack(side="left", fill="x", expand=True, padx=(10, 0))
         self.name = ctk.CTkLabel(info, text="", font=app.f.strong, text_color=C["text"], anchor="w")
         self.name.pack(fill="x")
-        self.status = ctk.CTkLabel(info, text="Hors ligne", font=app.f.small, text_color=C["muted"], anchor="w")
+        self.status = ctk.CTkLabel(info, text="Offline", font=app.f.small, text_color=C["muted"], anchor="w")
         self.status.pack(fill="x")
         self.bar = ctk.CTkProgressBar(self, height=8, corner_radius=4, fg_color=C["raised"],
                                       progress_color=C["action"])
@@ -111,28 +111,28 @@ class CameraTile(ctk.CTkFrame):
         self.score.pack(side="right")
 
     def render(self, name: str, scene: str, on_air: bool, in_game: bool, score: float | None, running: bool):
-        self.name.configure(text=name or f"Joueur {self.pid}")
+        self.name.configure(text=name or f"Player {self.pid}")
         self.scene.configure(text=scene)
         if on_air:
-            color, text, border = C["program"], "À l'antenne", C["program"]
+            color, text, border = C["program"], "On air", C["program"]
         elif score is not None and score < 0:
-            color, text, border = C["idle"], "Mort — en attente du respawn", C["line"]
+            color, text, border = C["idle"], "Dead, waiting to respawn", C["line"]
         elif in_game or score is not None:
-            color, text, border = C["preview"], "En partie", C["line"]
+            color, text, border = C["preview"], "In game", C["line"]
         elif running:
-            color, text, border = C["idle"], "En attente de sa partie", C["line"]
+            color, text, border = C["idle"], "Waiting for a game", C["line"]
         else:
-            color, text, border = C["idle"], "Hors ligne", C["line"]
+            color, text, border = C["idle"], "Offline", C["line"]
         self.tally.configure(fg_color=color)
         self.configure(border_color=border)
         self.status.configure(text=text, text_color=C["program"] if on_air else C["muted"])
         if score is None or score < 0:
             self.bar.set(0)
-            self.score.configure(text="—" if score is None else "mort")
+            self.score.configure(text="—" if score is None else "dead")
         else:
             self.bar.set(max(0.0, min(1.0, score / SCORE_MAX)))
             self.bar.configure(progress_color=C["program"] if on_air else C["action"])
-            self.score.configure(text=f"intérêt {score:.1f}")
+            self.score.configure(text=f"interest {score:.1f}")
 
 
 # --------------------------------------------------------------------------- application
@@ -154,11 +154,11 @@ class App:
         self._dirty = False
         self._build()
         self._fill(config_values(self.cfg, self.local))
-        self.show("regie")
+        self.show("control")
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(self.POLL_MS, self._poll)
 
-    # ------------------------------------------------------------------ petits constructeurs
+    # ------------------------------------------------------------------ small builders
     def var(self, key: str, kind=str):
         if key not in self.vars:
             v = tk.BooleanVar(self.root) if kind is bool else tk.StringVar(self.root)
@@ -230,7 +230,7 @@ class App:
         value.pack(side="left", padx=(12, 0))
         self.field(body, row, label, holder)
 
-    # ------------------------------------------------------------------ squelette
+    # ------------------------------------------------------------------ layout
     def _build(self):
         self.root.grid_columnconfigure(1, weight=1)
         self.root.grid_rowconfigure(0, weight=1)
@@ -250,28 +250,28 @@ class App:
         main.grid_columnconfigure(0, weight=1)
         main.grid_rowconfigure(0, weight=1)
         self.main = main
-        for key, title in (("regie", "Régie"), ("joueurs", "Joueurs"), ("obs", "OBS"),
-                           ("realisation", "Réalisation"), ("vision", "Vision"), ("pc", "Ce PC")):
+        for key, title in (("control", "Control room"), ("players", "Players"), ("obs", "OBS"),
+                           ("directing", "Directing"), ("vision", "Vision"), ("pc", "This PC")):
             b = ctk.CTkButton(side, text=title, anchor="w", font=self.f.nav, height=40, corner_radius=8,
                               fg_color="transparent", hover_color=C["panel"], text_color=C["muted"],
                               command=lambda k=key: self.show(k))
             b.pack(fill="x", padx=12, pady=2)
             self.nav[key] = b
-            page = ctk.CTkScrollableFrame(main, fg_color=C["bg"], corner_radius=0) if key != "regie" else \
+            page = ctk.CTkScrollableFrame(main, fg_color=C["bg"], corner_radius=0) if key != "control" else \
                 ctk.CTkFrame(main, fg_color=C["bg"], corner_radius=0)
             self.pages[key] = page
 
         foot = ctk.CTkFrame(side, fg_color="transparent")
         foot.pack(side="bottom", fill="x", padx=16, pady=18)
-        self.save_state = self.label(foot, "Réglages enregistrés", self.f.small, C["faint"])
+        self.save_state = self.label(foot, "Settings saved", self.f.small, C["faint"])
         self.save_state.pack(fill="x", pady=(0, 8))
-        self.btn_save = self.button(foot, "Enregistrer", self._save, width=188)
+        self.btn_save = self.button(foot, "Save", self._save, width=188)
         self.btn_save.pack(fill="x")
 
-        self._page_regie(self.pages["regie"])
-        self._page_joueurs(self.pages["joueurs"])
+        self._page_control(self.pages["control"])
+        self._page_players(self.pages["players"])
         self._page_obs(self.pages["obs"])
-        self._page_realisation(self.pages["realisation"])
+        self._page_directing(self.pages["directing"])
         self._page_vision(self.pages["vision"])
         self._page_pc(self.pages["pc"])
 
@@ -286,18 +286,18 @@ class App:
         self.label(page, title, self.f.title).pack(fill="x")
         self.label(page, subtitle, self.f.body, C["muted"], wraplength=820).pack(fill="x", pady=(4, 20))
 
-    # ------------------------------------------------------------------ page Régie
-    def _page_regie(self, page):
+    # ------------------------------------------------------------------ Control room page
+    def _page_control(self, page):
         top = ctk.CTkFrame(page, fg_color="transparent")
         top.pack(fill="x")
         left = ctk.CTkFrame(top, fg_color="transparent")
         left.pack(side="left", fill="x", expand=True)
-        self.label(left, "Régie", self.f.title).pack(fill="x")
-        self.regie_sub = self.label(left, "", self.f.body, C["muted"])
-        self.regie_sub.pack(fill="x", pady=(4, 0))
-        self.btn_go = self.button(top, "Démarrer la régie", self._toggle, primary=True, width=200)
+        self.label(left, "Control room", self.f.title).pack(fill="x")
+        self.control_sub = self.label(left, "", self.f.body, C["muted"])
+        self.control_sub.pack(fill="x", pady=(4, 0))
+        self.btn_go = self.button(top, "Start directing", self._toggle, primary=True, width=200)
         self.btn_go.pack(side="right")
-        self.btn_sim = self.button(top, "Tester sans jouer", self._simulate, width=150)
+        self.btn_sim = self.button(top, "Test without playing", self._simulate, width=150)
         self.btn_sim.pack(side="right", padx=10)
 
         self.grid = ctk.CTkFrame(page, fg_color="transparent")
@@ -313,15 +313,15 @@ class App:
         bottom.grid_rowconfigure(0, weight=1)
         hist = ctk.CTkFrame(bottom, fg_color=C["panel"], corner_radius=12)
         hist.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
-        self.label(hist, "Derniers changements", self.f.strong).pack(fill="x", padx=18, pady=(14, 6))
+        self.label(hist, "Recent cuts", self.f.strong).pack(fill="x", padx=18, pady=(14, 6))
         self.hist_box = ctk.CTkFrame(hist, fg_color="transparent")
         self.hist_box.pack(fill="both", expand=True, padx=18, pady=(0, 14))
         logp = ctk.CTkFrame(bottom, fg_color=C["panel"], corner_radius=12)
         logp.grid(row=0, column=1, sticky="nsew")
         head = ctk.CTkFrame(logp, fg_color="transparent")
         head.pack(fill="x", padx=18, pady=(14, 6))
-        self.label(head, "Journal", self.f.strong).pack(side="left")
-        ctk.CTkButton(head, text="Ouvrir le dossier", width=120, height=26, font=self.f.small,
+        self.label(head, "Log", self.f.strong).pack(side="left")
+        ctk.CTkButton(head, text="Open folder", width=120, height=26, font=self.f.small,
                       fg_color="transparent", hover_color=C["raised"], text_color=C["muted"],
                       command=lambda: _open_folder(BASE / "logs")).pack(side="right")
         self.log = ctk.CTkTextbox(logp, font=self.f.mono, fg_color=C["side"], text_color=C["muted"],
@@ -336,13 +336,13 @@ class App:
         for i, pid in enumerate(active):
             self.tiles[pid].grid(row=i // 3, column=i % 3, sticky="nsew", padx=6, pady=6)
 
-    # ------------------------------------------------------------------ page Joueurs
-    def _page_joueurs(self, page):
-        self._header(page, "Joueurs", "De 2 à 5 joueurs. La source vidéo est ce que la vision lit pour chaque "
-                                      "joueur : ta capture de jeu pour toi, la source NDI de chaque coéquipier.")
+    # ------------------------------------------------------------------ Players page
+    def _page_players(self, page):
+        self._header(page, "Players", "2 to 5 players. The video source is what the vision reads for each player: "
+                                      "your game capture for you, each teammate's NDI source for them.")
         bar = ctk.CTkFrame(page, fg_color="transparent")
         bar.pack(fill="x", pady=(0, 12))
-        self.button(bar, "Lire les sources d'OBS", self._read_obs, width=190).pack(side="left")
+        self.button(bar, "Read OBS sources", self._read_obs, width=190).pack(side="left")
         self.obs_hint = self.label(bar, "", self.f.small, C["muted"])
         self.obs_hint.pack(side="left", padx=14)
         self.source_boxes = []
@@ -353,138 +353,138 @@ class App:
             sw = ctk.CTkSwitch(card, text="", width=44, variable=self.var(f"p.{pid}.on", bool),
                                progress_color=C["action"], fg_color=C["idle"], button_color=C["text"])
             sw.grid(row=0, column=1, rowspan=2, padx=(0, 12))
-            for col, (lab, key, w) in enumerate((("Nom", "name", 150), ("Scène OBS", "scene", 120)), start=2):
+            for col, (lab, key, w) in enumerate((("Name", "name", 150), ("OBS scene", "scene", 120)), start=2):
                 self.label(card, lab, self.f.small, C["faint"]).grid(row=0, column=col, sticky="w", padx=6,
                                                                     pady=(12, 0))
                 self.entry(card, f"p.{pid}.{key}", width=w).grid(row=1, column=col, padx=6, pady=(2, 14))
-            self.label(card, "Source vidéo", self.f.small, C["faint"]).grid(row=0, column=4, sticky="w", padx=6,
+            self.label(card, "Video source", self.f.small, C["faint"]).grid(row=0, column=4, sticky="w", padx=6,
                                                                            pady=(12, 0))
             cb = ctk.CTkComboBox(card, variable=self.var(f"p.{pid}.vision_source"), values=[""], width=210,
                                  font=self.f.body, fg_color=C["raised"], border_color=C["line"],
                                  button_color=C["line"], dropdown_fg_color=C["raised"])
             cb.grid(row=1, column=4, padx=6, pady=(2, 14))
             self.source_boxes.append(cb)
-            self.label(card, "Résolution du jeu", self.f.small, C["faint"]).grid(row=0, column=5, sticky="w",
+            self.label(card, "Game resolution", self.f.small, C["faint"]).grid(row=0, column=5, sticky="w",
                                                                                 padx=6, pady=(12, 0))
             ctk.CTkComboBox(card, variable=self.var(f"p.{pid}.res"), values=RESOLUTIONS, width=130,
                             font=self.f.body, fg_color=C["raised"], border_color=C["line"], button_color=C["line"],
                             dropdown_fg_color=C["raised"]).grid(row=1, column=5, padx=(6, 20), pady=(2, 14))
 
-    # ------------------------------------------------------------------ page OBS
+    # ------------------------------------------------------------------ OBS page
     def _page_obs(self, page):
-        self._header(page, "OBS", "La régie pilote OBS par son serveur WebSocket "
-                                  "(OBS › Outils › Paramètres du serveur WebSocket).")
-        b = self.section(page, "Connexion")
-        self.field(b, 0, "Adresse", self.entry(b, "obs.host", 200))
+        self._header(page, "OBS", "The director drives OBS through its WebSocket server "
+                                  "(OBS › Tools › WebSocket Server Settings).")
+        b = self.section(page, "Connection")
+        self.field(b, 0, "Address", self.entry(b, "obs.host", 200))
         self.field(b, 1, "Port", self.entry(b, "obs.port", 90))
         pw = ctk.CTkFrame(b, fg_color="transparent")
         self.pw_entry = self.entry(pw, "obs.password", 240, show="•")
         self.pw_entry.pack(side="left")
-        ctk.CTkButton(pw, text="Afficher", width=80, height=30, font=self.f.small, fg_color="transparent",
+        ctk.CTkButton(pw, text="Show", width=80, height=30, font=self.f.small, fg_color="transparent",
                       hover_color=C["raised"], text_color=C["muted"],
                       command=lambda: self.pw_entry.configure(show="" if self.pw_entry.cget("show") else "•")
                       ).pack(side="left", padx=6)
-        self.field(b, 2, "Mot de passe", pw)
+        self.field(b, 2, "Password", pw)
         row = ctk.CTkFrame(b, fg_color="transparent")
         row.grid(row=3, column=0, columnspan=3, sticky="w", pady=(10, 0))
-        self.button(row, "Tester la connexion", self._read_obs, width=170).pack(side="left")
+        self.button(row, "Test connection", self._read_obs, width=170).pack(side="left")
         self.obs_status = self.label(row, "", self.f.small, C["muted"])
         self.obs_status.pack(side="left", padx=14)
 
-        b = self.section(page, "Scènes", "Une scène POV_x par joueur et une scène d'écran partagé. « Préparer » crée "
-                                         "ce qui manque sans toucher à ce qui existe, et ajoute ta capture de jeu.")
-        self.field(b, 0, "Écran partagé", self.entry(b, "obs.scene_split", 160), "vide = jamais d'écran partagé")
+        b = self.section(page, "Scenes", "One POV_x scene per player plus a split-screen scene. \"Prepare scenes\" "
+                                         "creates what is missing without touching what exists, and adds your game capture.")
+        self.field(b, 0, "Split-screen scene", self.entry(b, "obs.scene_split", 160), "empty = never split the screen")
         row = ctk.CTkFrame(b, fg_color="transparent")
         row.grid(row=1, column=0, columnspan=3, sticky="w", pady=(10, 0))
-        self.button(row, "Préparer les scènes", self._prepare_obs, width=180).pack(side="left")
-        self.button(row, "Garder les captures actives", lambda: self._tool(
+        self.button(row, "Prepare scenes", self._prepare_obs, width=180).pack(side="left")
+        self.button(row, "Keep captures active", lambda: self._tool(
             "Vision", cli("vision-sources")), width=220).pack(side="left", padx=10)
 
-    # ------------------------------------------------------------------ page Réalisation
-    def _page_realisation(self, page):
-        self._header(page, "Réalisation", "Quand la caméra change de joueur. Plus les durées sont longues, plus la "
-                                          "réalisation est posée ; plus elles sont courtes, plus elle est nerveuse.")
-        b = self.section(page, "Changements de caméra")
-        self.slider(b, 0, "Durée minimale sur un joueur", "switching.min_hold", 1, 15, 0.5, " s")
-        self.slider(b, 1, "Avance de score pour changer", "switching.margin", 0.5, 5, 0.25)
-        self.slider(b, 2, "Changement urgent après", "switching.fast_min_hold", 0.5, 6, 0.5, " s")
-        self.slider(b, 3, "Avance pour un changement urgent", "switching.fast_margin", 2, 10, 0.5)
-        self.slider(b, 4, "Pause après un clic à la main", "switching.manual_pause", 5, 60, 5, " s")
-        b = self.section(page, "Écran partagé", "Les deux joueurs les plus intéressants côte à côte. « Combats séparés » "
-                                                "le réserve aux moments où chacun se bat de son côté.")
-        self.switch(b, "Autoriser l'écran partagé", "switching.split_enabled").grid(row=0, column=0, columnspan=2,
+    # ------------------------------------------------------------------ Directing page
+    def _page_directing(self, page):
+        self._header(page, "Directing", "When the camera moves to another player. Longer times give calmer "
+                                          "directing; shorter times make it snappier.")
+        b = self.section(page, "Camera cuts")
+        self.slider(b, 0, "Minimum time on a player", "switching.min_hold", 1, 15, 0.5, " s")
+        self.slider(b, 1, "Score lead to cut", "switching.margin", 0.5, 5, 0.25)
+        self.slider(b, 2, "Urgent cut after", "switching.fast_min_hold", 0.5, 6, 0.5, " s")
+        self.slider(b, 3, "Score lead for an urgent cut", "switching.fast_margin", 2, 10, 0.5)
+        self.slider(b, 4, "Pause after a manual switch", "switching.manual_pause", 5, 60, 5, " s")
+        b = self.section(page, "Split screen", "The two most interesting players side by side. \"Separate fights\" "
+                                                "keeps it for moments when each one fights on their own.")
+        self.switch(b, "Allow split screen", "switching.split_enabled").grid(row=0, column=0, columnspan=2,
                                                                                     sticky="w", pady=6)
-        seg = ctk.CTkSegmentedButton(b, values=["Combats séparés", "Toujours"], font=self.f.body,
+        seg = ctk.CTkSegmentedButton(b, values=["Separate fights", "Always"], font=self.f.body,
                                      selected_color=C["action_deep"], selected_hover_color=C["action_deep_hover"],
                                      unselected_color=C["raised"], fg_color=C["raised"], text_color=C["text"],
                                      command=lambda v: self.var("switching.split_mode").set(
-                                         "combats_separes" if v == "Combats séparés" else "toujours"))
+                                         "separate_fights" if v == "Separate fights" else "always"))
         self.var("switching.split_mode").trace_add("write", lambda *_: seg.set(
-            "Combats séparés" if self.var("switching.split_mode").get() == "combats_separes" else "Toujours"))
-        self.field(b, 1, "Quand", seg)
-        self.slider(b, 2, "Niveau d'action requis", "switching.split_threshold", 1, 8, 0.5)
+            "Separate fights" if self.var("switching.split_mode").get() == "separate_fights" else "Always"))
+        self.field(b, 1, "When", seg)
+        self.slider(b, 2, "Action level needed", "switching.split_threshold", 1, 8, 0.5)
 
-    # ------------------------------------------------------------------ page Vision
+    # ------------------------------------------------------------------ Vision page
     def _page_vision(self, page):
-        self._header(page, "Vision", "La régie lit la minimap de chaque joueur dans OBS pour voir arriver les "
-                                     "ennemis avant le combat.")
-        b = self.section(page, "Lecture des minimaps")
-        self.switch(b, "Activer la vision", "vision.enabled").grid(row=0, column=0, columnspan=2, sticky="w", pady=6)
-        self.slider(b, 1, "Une lecture toutes les", "vision.interval", 0.1, 1.0, 0.05, " s")
-        self.slider(b, 2, "Bonus par ennemi en plus", "vision.w_enemy_near", 0, 3, 0.1)
-        b = self.section(page, "Calibration", "La zone est en fractions de l'image et convient à tous les écrans 16:9. "
-                                              "« Calibrer » enregistre 5 captures annotées pendant une partie.")
+        self._header(page, "Vision", "The director reads each player's minimap in OBS to see enemies coming "
+                                     "before the fight starts.")
+        b = self.section(page, "Minimap reading")
+        self.switch(b, "Turn on the vision", "vision.enabled").grid(row=0, column=0, columnspan=2, sticky="w", pady=6)
+        self.slider(b, 1, "Read every", "vision.interval", 0.1, 1.0, 0.05, " s")
+        self.slider(b, 2, "Bonus per extra enemy", "vision.w_enemy_near", 0, 3, 0.1)
+        b = self.section(page, "Calibration", "The area is in fractions of the image and fits every 16:9 screen. "
+                                              "\"Calibrate\" saves 5 annotated captures during a game.")
         zone = ctk.CTkFrame(b, fg_color="transparent")
-        for i, lab in enumerate(("gauche", "haut", "droite", "bas")):
+        for i, lab in enumerate(("left", "top", "right", "bottom")):
             cell = ctk.CTkFrame(zone, fg_color="transparent")
             cell.pack(side="left", padx=(0, 10))
             self.label(cell, lab, self.f.small, C["faint"]).pack(fill="x")
             self.entry(cell, f"vision.minimap.{i}", 72).pack()
-        self.field(b, 0, "Zone de la minimap", zone)
+        self.field(b, 0, "Minimap area", zone)
         row = ctk.CTkFrame(b, fg_color="transparent")
         row.grid(row=1, column=0, columnspan=3, sticky="w", pady=(10, 0))
-        self.button(row, "Calibrer", lambda: self._tool(
+        self.button(row, "Calibrate", lambda: self._tool(
             "Calibration", cli("vision-debug", "--count", "5", "--every", "1"), open_dir=BASE / "logs" / "vision"),
             width=120).pack(side="left")
 
-    # ------------------------------------------------------------------ page Ce PC
+    # ------------------------------------------------------------------ This PC page
     def _page_pc(self, page):
-        self._header(page, "Ce PC", "Le même config.toml sert à tous les PC ; seul le rôle de celui-ci change.")
-        b = self.section(page, "Rôle")
-        seg = ctk.CTkSegmentedButton(b, values=["PC qui diffuse", "PC joueur"], font=self.f.body,
+        self._header(page, "This PC", "Every PC uses the same config.toml; only this PC's role changes.")
+        b = self.section(page, "Role")
+        seg = ctk.CTkSegmentedButton(b, values=["Streaming PC", "Player PC"], font=self.f.body,
                                      selected_color=C["action_deep"], selected_hover_color=C["action_deep_hover"],
                                      unselected_color=C["raised"], fg_color=C["raised"], text_color=C["text"],
                                      command=lambda v: self.var("local.role").set(
-                                         "diffuseur" if v == "PC qui diffuse" else "joueur"))
+                                         "streamer" if v == "Streaming PC" else "player"))
         self.var("local.role").trace_add("write", lambda *_: seg.set(
-            "PC qui diffuse" if self.var("local.role").get() == "diffuseur" else "PC joueur"))
-        self.field(b, 0, "Ce PC est", seg, "PC qui diffuse : OBS + directeur + ton agent")
+            "Streaming PC" if self.var("local.role").get() == "streamer" else "Player PC"))
+        self.field(b, 0, "This PC is the", seg, "Streaming PC: OBS + director + your agent")
         letters = ctk.CTkSegmentedButton(b, values=list(PLAYER_IDS), variable=self.var("local.player_id"),
                                          font=self.f.strong, selected_color=C["action_deep"],
                                          selected_hover_color=C["action_deep_hover"], unselected_color=C["raised"],
                                          fg_color=C["raised"], text_color=C["text"])
-        self.field(b, 1, "Joueur", letters)
-        b = self.section(page, "Réseau", "Identique sur tous les PC.")
+        self.field(b, 1, "Player", letters)
+        b = self.section(page, "Network", "The same on every PC.")
         ip = ctk.CTkFrame(b, fg_color="transparent")
         self.entry(ip, "network.director_host", 170).pack(side="left")
-        ctk.CTkButton(ip, text="Utiliser l'IP de ce PC", width=150, height=30, font=self.f.small,
+        ctk.CTkButton(ip, text="Use this PC's IP", width=150, height=30, font=self.f.small,
                       fg_color="transparent", hover_color=C["raised"], text_color=C["action"],
                       command=lambda: self.var("network.director_host").set(local_ip())).pack(side="left", padx=8)
-        self.field(b, 0, "IP du PC qui diffuse", ip)
-        self.field(b, 1, "Port UDP", self.entry(b, "network.director_port", 90))
+        self.field(b, 0, "Streaming PC IP", ip)
+        self.field(b, 1, "UDP port", self.entry(b, "network.director_port", 90))
         tok = ctk.CTkFrame(b, fg_color="transparent")
         self.entry(tok, "network.token", 170).pack(side="left")
-        ctk.CTkButton(tok, text="Nouveau jeton", width=110, height=30, font=self.f.small, fg_color="transparent",
+        ctk.CTkButton(tok, text="New token", width=110, height=30, font=self.f.small, fg_color="transparent",
                       hover_color=C["raised"], text_color=C["action"],
                       command=lambda: self.var("network.token").set(secrets.token_urlsafe(9))).pack(side="left", padx=8)
-        self.field(b, 2, "Jeton", tok)
-        b = self.section(page, "Journal")
-        self.switch(b, "Scores de ton agent chaque seconde dans le journal", "local.verbose").grid(
+        self.field(b, 2, "Token", tok)
+        b = self.section(page, "Log")
+        self.switch(b, "Log your agent's scores every second", "local.verbose").grid(
             row=0, column=0, columnspan=2, sticky="w", pady=6)
-        self.label(b, f"Dossier : {BASE}", self.f.small, C["faint"]).grid(row=1, column=0, columnspan=3, sticky="w",
+        self.label(b, f"Folder: {BASE}", self.f.small, C["faint"]).grid(row=1, column=0, columnspan=3, sticky="w",
                                                                          pady=(8, 0))
 
-    # ------------------------------------------------------------------ données
+    # ------------------------------------------------------------------ data
     def _fill(self, values: dict):
         for k, v in values.items():
             self.var(k, bool if isinstance(v, bool) else str).set(v)
@@ -505,14 +505,14 @@ class App:
             self._refresh_save_state()
 
     def _refresh_save_state(self):
-        self.save_state.configure(text="Modifications non enregistrées" if self._dirty else "Réglages enregistrés",
+        self.save_state.configure(text="Unsaved changes" if self._dirty else "Settings saved",
                                   text_color=C["action"] if self._dirty else C["faint"])
 
     def _save(self, quiet=False) -> bool:
         try:
             cfg, local = self.form_to_config()
         except ValueError as e:
-            messagebox.showerror("Réglage à corriger", str(e))
+            messagebox.showerror("Setting to fix", str(e))
             return False
         config_writer.save(cfg, CONFIG_FILE)
         local.save()
@@ -521,23 +521,23 @@ class App:
         self._refresh_save_state()
         self._layout_tiles()
         if not quiet:
-            self._print("Réglages enregistrés dans config.toml et ce_pc.json")
+            self._print("Settings saved to config.toml and this_pc.json")
         return True
 
     # ------------------------------------------------------------------ actions
     def _toggle(self):
         if self.group.running():
             self.group.stop()
-            self._print("Régie arrêtée")
+            self._print("Directing stopped")
         else:
             if not self._save(quiet=True):
                 return
             for w in check_local(self.cfg, self.local):
-                self._print("Attention : " + w)
+                self._print("Warning: " + w)
             self.live.update(on_air=[], scores={}, in_game=set(), obs=None)
             for name, argv in build_commands(self.cfg, self.local):
                 self.group.start(name, argv)
-            self._print("Régie démarrée")
+            self._print("Directing started")
         self._render()
 
     def _tool(self, name, argv, open_dir=None):
@@ -545,7 +545,7 @@ class App:
             return
         g = ProcessGroup(lines=self.group.lines)
         g.start(name, argv)
-        self._print(f"{name} lancé")
+        self._print(f"{name} started")
         if open_dir is not None:
             def wait_and_open():
                 for _, p in g.procs:
@@ -554,16 +554,16 @@ class App:
             threading.Thread(target=wait_and_open, daemon=True).start()
 
     def _simulate(self):
-        self.show("regie")
+        self.show("control")
         self._tool("Simulation", cli("simulate"))
 
     def _prepare_obs(self):
-        self._tool("Préparer OBS", cli("obs-setup", "--split", "--game-capture", str(self.var("local.player_id").get())))
+        self._tool("Prepare OBS", cli("obs-setup", "--split", "--game-capture", str(self.var("local.player_id").get())))
 
     def _read_obs(self):
         if not self._save(quiet=True):
             return
-        self.obs_status.configure(text="Connexion…", text_color=C["muted"])
+        self.obs_status.configure(text="Connecting…", text_color=C["muted"])
         cfg = self.cfg
 
         def work():
@@ -574,10 +574,10 @@ class App:
                 version = cl.get_version().obs_version
                 scenes = [s["sceneName"] for s in cl.get_scene_list().scenes]
                 inputs = sorted(i["inputName"] for i in cl.get_input_list().inputs)
-                msg = f"Connecté à OBS {version} — {len(scenes)} scènes, {len(inputs)} sources"
+                msg = f"Connected to OBS {version}: {len(scenes)} scenes, {len(inputs)} sources"
                 ok = True
             except Exception as e:
-                msg, ok, inputs = f"Connexion impossible : {e}", False, None
+                msg, ok, inputs = f"Could not connect: {e}", False, None
             self.root.after(0, lambda: self._obs_result(msg, ok, inputs))
 
         threading.Thread(target=work, daemon=True).start()
@@ -591,7 +591,7 @@ class App:
                 cb.configure(values=[""] + inputs)
         self._print(msg)
 
-    # ------------------------------------------------------------------ affichage en direct
+    # ------------------------------------------------------------------ live display
     def _print(self, line: str):
         self.log.configure(state="normal")
         self.log.insert("end", line + "\n")
@@ -626,30 +626,30 @@ class App:
                 tile.render(names[pid][0], names[pid][1], running and pid in self.live["on_air"],
                             pid in self.live["in_game"], self.live["scores"].get(pid) if running else None, running)
         n = len(self.cfg.players)
-        role = "PC qui diffuse" if self.local.role == "diffuseur" else f"PC joueur {self.local.player_id}"
+        role = "Streaming PC" if self.local.role == "streamer" else f"Player PC {self.local.player_id}"
         if running:
-            obs = {True: "OBS connecté", False: "OBS injoignable", None: "connexion à OBS…"}[self.live["obs"]]
-            if self.local.role != "diffuseur":
-                obs = "agent actif"
-            self.regie_sub.configure(text=f"En direct — {n} joueurs — {obs}", text_color=C["text"])
-            self.btn_go.configure(text="Arrêter la régie", fg_color=C["program"], hover_color="#EE6A6E",
+            obs = {True: "OBS connected", False: "OBS unreachable", None: "connecting to OBS…"}[self.live["obs"]]
+            if self.local.role != "streamer":
+                obs = "agent running"
+            self.control_sub.configure(text=f"Live · {n} players · {obs}", text_color=C["text"])
+            self.btn_go.configure(text="Stop directing", fg_color=C["program"], hover_color="#EE6A6E",
                                   text_color="#FFFFFF")
             self.brand_tally.configure(fg_color=C["program"])
         else:
-            self.regie_sub.configure(text=f"Arrêtée — {n} joueurs — {role}", text_color=C["muted"])
-            self.btn_go.configure(text="Démarrer la régie", fg_color=C["action"], hover_color=C["action_hover"],
+            self.control_sub.configure(text=f"Stopped · {n} players · {role}", text_color=C["muted"])
+            self.btn_go.configure(text="Start directing", fg_color=C["action"], hover_color=C["action_hover"],
                                   text_color=C["on_action"])
             self.brand_tally.configure(fg_color=C["idle"])
         for w in self.hist_box.winfo_children():
             w.destroy()
         if not self.live["history"]:
-            self.label(self.hist_box, "Les changements de caméra apparaîtront ici.", self.f.small,
+            self.label(self.hist_box, "Camera cuts will show up here.", self.f.small,
                        C["faint"]).pack(fill="x")
         for t, who, split in self.live["history"]:
             row = ctk.CTkFrame(self.hist_box, fg_color="transparent")
             row.pack(fill="x", pady=1)
             self.label(row, t, self.f.small, C["faint"], width=70).pack(side="left")
-            self.label(row, ("Écran partagé " if split else "Caméra ") + who, self.f.small).pack(side="left")
+            self.label(row, ("Split screen " if split else "Camera ") + who, self.f.small).pack(side="left")
 
     def _poll(self):
         changed = False

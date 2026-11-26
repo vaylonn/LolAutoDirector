@@ -1,8 +1,8 @@
-"""Portraits officiels des champions (Data Dragon de Riot), téléchargés une fois puis gardés en cache.
+"""Official champion portraits (Riot's Data Dragon), downloaded once then cached.
 
     https://ddragon.leagueoflegends.com/cdn/<version>/img/champion/<Id>.png   (120×120)
 
-Les identifiants viennent de l'API locale du jeu : `rawChampionName` = "game_character_displayname_<Id>".
+Ids come from the game's local API: `rawChampionName` = "game_character_displayname_<Id>".
 """
 
 from __future__ import annotations
@@ -21,10 +21,10 @@ _VALID_ID = re.compile(r"^[A-Za-z0-9]{1,32}$")
 
 
 def valid_ids(ids) -> list[str]:
-    """Ne garde que des identifiants de champion plausibles (lettres/chiffres).
+    """Keeps only plausible champion ids (letters and digits).
 
-    Les noms arrivent par le réseau (paquets UDP des agents) et servent à construire une URL et un
-    nom de fichier : on refuse tout le reste (« ../ », espaces, etc.).
+    Names arrive from the network (agents' UDP packets) and are used to build a URL and a file
+    name, so anything else ("../", spaces, etc.) is rejected.
     """
     if not isinstance(ids, (list, tuple)):
         return []
@@ -32,7 +32,7 @@ def valid_ids(ids) -> list[str]:
 
 
 def champion_id(player: dict) -> str:
-    """Identifiant Data Dragon d'un joueur de l'API (« MonkeyKing » pour Wukong, etc.)."""
+    """Data Dragon id of a player from the API ("MonkeyKing" for Wukong, etc.)."""
     raw = player.get("rawChampionName") or ""
     if raw.startswith("game_character_displayname_"):
         return raw.split("game_character_displayname_", 1)[1]
@@ -40,7 +40,7 @@ def champion_id(player: dict) -> str:
 
 
 def enemy_ids(all_players: list, me: str, same_name) -> list[str]:
-    """Champions de l'équipe adverse, vus depuis le joueur `me`."""
+    """Enemy team's champions, as seen from player `me`."""
     team = next((p.get("team") for p in all_players
                  if any(same_name(n, me) for n in (p.get("riotIdGameName"), p.get("summonerName")) if n)), None)
     if not team:
@@ -49,7 +49,7 @@ def enemy_ids(all_players: list, me: str, same_name) -> list[str]:
 
 
 def ensure_portraits(ids, cache_dir: str | Path = "data/portraits", timeout: float = 5.0) -> dict[str, Path]:
-    """Télécharge les portraits manquants. Renvoie {id: chemin} pour ceux disponibles."""
+    """Downloads missing portraits. Returns {id: path} for the available ones."""
     cache = Path(cache_dir)
     if not cache.is_absolute():
         cache = ROOT / cache
@@ -66,7 +66,7 @@ def ensure_portraits(ids, cache_dir: str | Path = "data/portraits", timeout: flo
     try:
         version = requests.get(f"{DDRAGON}/api/versions.json", timeout=timeout).json()[0]
     except Exception as e:
-        log.warning("Portraits : Data Dragon injoignable (%s) — vision sans reconnaissance des champions", e)
+        log.warning("Portraits: Data Dragon unreachable (%s), vision runs without champion recognition", e)
         return out
     for cid in missing:
         try:
@@ -75,6 +75,6 @@ def ensure_portraits(ids, cache_dir: str | Path = "data/portraits", timeout: flo
             (cache / f"{cid}.png").write_bytes(r.content)
             out[cid] = cache / f"{cid}.png"
         except Exception as e:
-            log.warning("Portrait de %s introuvable (%s)", cid, e)
-    log.info("Portraits prêts : %s", ", ".join(sorted(out)))
+            log.warning("Portrait for %s not found (%s)", cid, e)
+    log.info("Portraits ready: %s", ", ".join(sorted(out)))
     return out

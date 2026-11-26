@@ -15,8 +15,6 @@ players are in two different fights at once.
 - **One app for everything.** Settings, OBS scene setup, a live camera wall and a log, in one window.
   You can still take over in OBS at any time: the director steps back for 20 seconds.
 
-> The app's interface is in French. This guide gives each French label with its meaning.
-
 ## How it works
 
 ```
@@ -56,31 +54,31 @@ players are in two different fights at once.
 
    | Page | What to do |
    |---|---|
-   | **Ce PC** (this PC) | Choose *PC qui diffuse* (streaming PC) and player **A**. Click *Utiliser l'IP de ce PC* (use this PC's IP) and *Nouveau jeton* (new token). |
-   | **Joueurs** (players) | Turn on one card per player, give a name and the game resolution. *Source vidéo*: your game capture for you, each teammate's NDI source for them. *Lire les sources d'OBS* fills the list. |
-   | **OBS** | Enter the WebSocket password, click *Tester la connexion* (test connection), then *Préparer les scènes* (create one `POV_x` scene per player, plus `SPLIT`). |
-   | **Réalisation** (directing) | Optional: minimum time per POV, how reactive the cuts are, split-screen mode. |
+   | **This PC** | Choose *Streaming PC* and player **A**. Click *Use this PC's IP* and *New token*. |
+   | **Players** | Turn on one card per player, give a name and the game resolution. *Video source*: your game capture for you, each teammate's NDI source for them. *Read OBS sources* fills the list. |
+   | **OBS** | Enter the WebSocket password, click *Test connection*, then *Prepare scenes* (creates one `POV_x` scene per player, plus `SPLIT`). |
+   | **Directing** | Optional: minimum time per POV, how reactive the cuts are, split-screen mode. |
 
-5. Click **Enregistrer** (save), then send the `config.toml` file created next to the exe to every teammate.
+5. Click **Save**, then send the `config.toml` file created next to the exe to every teammate.
 6. Allow UDP port 5005 in the Windows firewall (PowerShell as administrator):
 
    ```powershell
    New-NetFirewallRule -DisplayName "LoL Auto Director" -Direction Inbound -Protocol UDP -LocalPort 5005 -Action Allow
    ```
 
-To check the install without playing, open **Régie** and click *Tester sans jouer* (test without playing):
+To check the install without playing, open **Control room** and click *Test without playing*:
 a one-minute simulated game with two fake players runs the full pipeline and prints every camera decision
 in the log (OBS is not touched).
 
 ### 2. Set up each teammate
 
-- **Windows:** [docs/player-windows.md](docs/player-windows.md). Same exe, *PC joueur* (player PC) role.
+- **Windows:** [docs/player-windows.md](docs/player-windows.md). Same exe, *Player PC* role.
 - **Mac:** [docs/player-mac.md](docs/player-mac.md). Two double-click scripts.
 
 ### 3. Go live
 
-1. Every teammate starts their agent (*Démarrer la régie* in the app, or `mac/start.command`).
-2. On the streaming PC, page **Régie** › **Démarrer la régie** (start).
+1. Every teammate starts their agent (*Start directing* in the app, or `mac/start.command`).
+2. On the streaming PC, page **Control room** › **Start directing**.
 3. Launch the game. Each camera tile turns green when its player is in game and red when on air.
 
 Use the [live checklist](docs/live-checklist.md) before each stream.
@@ -118,21 +116,21 @@ icons by their red or blue ring, and recognises the enemy champions from their o
 (downloaded from Riot's Data Dragon). On real footage it found 21 of 23 enemies with no false alarm, in about
 20 ms per image.
 
-The minimap area is calibrated for 16:9. For another aspect ratio, use *Vision › Calibrer*: it saves annotated
+The minimap area is calibrated for 16:9. For another aspect ratio, use *Vision › Calibrate*: it saves annotated
 captures in `logs/vision/` so you can adjust the area.
 
 ## Settings
 
 Everything is set in the app, which writes `config.toml`. The file is the same on every PC; each PC's role
-and letter are kept separately in `ce_pc.json`. You can also edit `config.toml` by hand: see the commented
+and letter are kept separately in `this_pc.json`. You can also edit `config.toml` by hand: see the commented
 [config.example.toml](config.example.toml). Unknown keys are rejected at start-up, so typos never go unnoticed.
 
 | I want… | Change |
 |---|---|
-| Fewer cuts | *Réalisation*: raise the minimum time per POV (e.g. 8 s) |
-| Faster cuts | *Réalisation*: lower the minimum time and the urgent-switch lead |
-| Split screen even in a shared fight | *Réalisation*: split mode *Toujours* (always) |
-| No split screen | *Réalisation*: turn split screen off |
+| Fewer cuts | *Directing*: raise the minimum time per POV (e.g. 8 s) |
+| Faster cuts | *Directing*: lower the minimum time and the urgent-switch lead |
+| Split screen even in a shared fight | *Directing*: split screen *When* › *Always* |
+| No split screen | *Directing*: turn *Allow split screen* off |
 | Lighter vision | *Vision*: read every 0.5 s |
 | Favour a role, kills or objectives | `[scoring]` in `config.toml` |
 
@@ -140,15 +138,15 @@ and letter are kept separately in `ce_pc.json`. You can also edit `config.toml` 
 
 | Symptom | Likely cause |
 |---|---|
-| *OBS injoignable* (OBS unreachable) | WebSocket off, wrong port or password. Use *OBS › Tester la connexion*. |
-| `Scène OBS introuvable` (scene not found) | Scene names differ from the settings. Click *Préparer les scènes* again. |
-| The camera never goes to a player | Firewall (UDP 5005), wrong streaming-PC IP or token on their side, or their letter is off in *Joueurs*. |
+| *OBS unreachable* | WebSocket off, wrong port or password. Use *OBS › Test connection*. |
+| `OBS scene not found` | Scene names differ from the settings. Click *Prepare scenes* again. |
+| The camera never goes to a player | Firewall (UDP 5005), wrong streaming-PC IP or token on their side, or their letter is off in *Players*. |
 | A tile never turns green | The game API only exists during a real game, not in replays or the lobby. |
-| Vision shows black images | The game is not in focus or OBS hides the capture: *OBS › Garder les captures actives*. |
+| Vision shows black images | The game is not in focus or OBS hides the capture: *OBS › Keep captures active*. |
 | The director stopped switching | An unmanaged scene is on air, or it is in its 20 s pause after a manual switch. |
 | The exe was blocked | SmartScreen: *More info › Run anyway* (the exe is not signed). |
 
-Logs are in the `logs/` folder next to the exe (*Ouvrir le dossier* on the Régie page).
+Logs are in the `logs/` folder next to the exe (*Open folder* on the Control room page).
 
 ## Run from source
 

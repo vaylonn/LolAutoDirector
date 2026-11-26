@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Prépare OBS pour 2 à 5 joueurs (utilise host/port/mot de passe et [[players]] de config.toml).
+"""Prepares OBS for 2 to 5 players (uses host/port/password and [[players]] from config.toml).
 
-    python -m lolauto obs-setup                        # scènes POV_x manquantes (fond coloré de test)
-    python -m lolauto obs-setup --split                # scène SPLIT dynamique (deux joueurs au choix)
-    python -m lolauto obs-setup --game-capture A       # capture de jeu LoL du joueur A (ce PC) dans POV_A
+    python -m lolauto obs-setup                        # missing POV_x scenes (coloured test background)
+    python -m lolauto obs-setup --split                # dynamic SPLIT scene (any two players)
+    python -m lolauto obs-setup --game-capture A       # LoL game capture of player A (this PC) in POV_A
 
-Ne modifie jamais une scène ou une source qui existe déjà : remplace ensuite les fonds de test par
-tes vraies sources (capture de jeu pour toi, source NDI pour chaque PC distant).
+Never changes a scene or source that already exists: replace the test backgrounds with your real
+sources afterwards (game capture for yourself, an NDI source for each remote PC).
 
-SPLIT dynamique : la scène SPLIT contient chaque scène POV_x deux fois (moitié gauche, moitié droite).
-Le directeur n'allume que les deux joueurs à montrer — une seule scène pour toutes les paires.
+Dynamic SPLIT: the SPLIT scene holds every POV_x scene twice (left half, right half).
+The director only turns on the two players to show: one scene for every pair.
 """
 
 from __future__ import annotations
@@ -38,75 +38,75 @@ def create_player_scenes(cl, cfg) -> None:
     existing = {s["sceneName"] for s in cl.get_scene_list().scenes}
     for p in cfg.players:
         if p.scene in existing:
-            print(f"- {p.scene} existe déjà, inchangée")
+            print(f"- {p.scene} already exists, unchanged")
             continue
         cl.create_scene(p.scene)
-        cl.create_input(p.scene, f"{p.scene} fond", color_kind,
+        cl.create_input(p.scene, f"{p.scene} background", color_kind,
                         {"color": COLORS.get(p.id, 0xFF808080), "width": w, "height": h}, True)
         if text_kind:
             label = f"POV {p.id}" + (f" ({p.name})" if p.name else "")
-            cl.create_input(p.scene, f"{p.scene} texte", text_kind,
+            cl.create_input(p.scene, f"{p.scene} text", text_kind,
                             {"text": label, "font": {"face": "Arial", "size": 160}}, True)
-        print(f"+ {p.scene} créée")
+        print(f"+ {p.scene} created")
 
 
 def create_split(cl, cfg) -> None:
     split = cfg.obs.scene_split
     if not split:
-        print("- [obs] scene_split est vide : pas d'écran partagé")
+        print("- [obs] scene_split is empty: no split screen")
         return
     video = cl.get_video_settings()
     w, h = float(video.base_width), float(video.base_height)
     existing = {s["sceneName"] for s in cl.get_scene_list().scenes}
     if split not in existing:
         cl.create_scene(split)
-        print(f"+ {split} créée")
+        print(f"+ {split} created")
     items = cl.get_scene_item_list(split).scene_items
     nested = {}
     for it in items:
         if it.get("sourceType") == "OBS_SOURCE_TYPE_SCENE":
             tr = it.get("sceneItemTransform") or {}
-            side = "G" if float(tr.get("positionX", 0)) + float(tr.get("width", 0)) / 2 < w / 2 else "D"
+            side = "L" if float(tr.get("positionX", 0)) + float(tr.get("width", 0)) / 2 < w / 2 else "R"
             nested[(it["sourceName"], side)] = it["sceneItemId"]
     if items and not nested:
-        print(f"- {split} contient déjà des sources « à la main » : laissée telle quelle (SPLIT fixe)")
+        print(f"- {split} already holds hand-made sources: left as is (fixed SPLIT)")
         return
     for p in cfg.players:
-        for side, x in (("G", 0.0), ("D", w / 2)):
+        for side, x in (("L", 0.0), ("R", w / 2)):
             if (p.scene, side) in nested:
                 continue
             item = cl.create_scene_item(split, p.scene, False).scene_item_id
             cl.set_scene_item_transform(split, item, {"scaleX": 0.5, "scaleY": 0.5,
                                                       "positionX": x, "positionY": h / 4})
-            print(f"+ {p.scene} ajoutée dans {split} (moitié {'gauche' if side == 'G' else 'droite'})")
-    print(f"  {split} : le directeur affichera automatiquement les deux bons joueurs")
+            print(f"+ {p.scene} added to {split} ({'left' if side == 'L' else 'right'} half)")
+    print(f"  {split}: the director will show the right two players automatically")
 
 
 def add_game_capture(cl, cfg, pid: str) -> None:
     p = cfg.player(pid)
     if p is None:
-        print(f"! joueur {pid} absent de config.toml")
+        print(f"! player {pid} is not in config.toml")
         return
-    name = p.vision_source or f"Jeu {pid}"
+    name = p.vision_source or f"Game {pid}"
     inputs = {i["inputName"] for i in cl.get_input_list().inputs}
     if name in inputs:
-        print(f"- source {name!r} existe déjà, inchangée")
+        print(f"- source {name!r} already exists, unchanged")
         return
     kinds = cl.get_input_kind_list(False).input_kinds
     kind = next((k for k in kinds if k.startswith("game_capture")), None)
     if kind is None:
-        print("! « Capture de jeu » indisponible (OBS sur Mac ?) : ajoute la capture à la main")
+        print("! \"Game Capture\" is not available (OBS on a Mac?): add the capture by hand")
         return
     cl.create_input(p.scene, name, kind, {"capture_mode": "window", "window": LOL_WINDOW,
                                           "capture_cursor": False}, True)
-    print(f"+ source {name!r} (capture de la fenêtre LoL) ajoutée dans {p.scene}")
+    print(f"+ source {name!r} (LoL window capture) added to {p.scene}")
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--split", action="store_true", help="crée / complète la scène SPLIT dynamique")
-    ap.add_argument("--game-capture", metavar="ID", help="ajoute la capture de jeu LoL du joueur ID (ce PC)")
-    ap.add_argument("--config", help="chemin de config.toml")
+    ap.add_argument("--split", action="store_true", help="create or complete the dynamic SPLIT scene")
+    ap.add_argument("--game-capture", metavar="ID", help="add player ID's LoL game capture (this PC)")
+    ap.add_argument("--config", help="path to config.toml")
     args = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")

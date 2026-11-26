@@ -1,13 +1,12 @@
-"""Lanceur : réglages + démarrage de la régie en un clic (modèle sans interface ; l'interface est dans ui.py).
+"""App model: settings and one-click start (no UI code here; the interface lives in ui.py).
 
-    python -m lolauto            (ou LoLAutoDirector.exe)
+    python -m lolauto            (or LoLAutoDirector.exe)
 
-- « Ce PC » : rôle (PC qui diffuse = OBS + directeur, ou PC joueur = agent seul) et lettre du joueur.
-- « Joueurs » : 2 à 5 joueurs, scène OBS, source vidéo lue par la vision, résolution de chacun.
-- « OBS », « Caméra », « Vision » : les réglages de config.toml.
-- Boutons : Enregistrer, Lancer / Arrêter, Simulation, Préparer OBS, Calibrer la vision.
+- "This PC": role (streaming PC = OBS + director, or player PC = agent only) and player letter.
+- "Players": 2 to 5 players, OBS scene, video source read by the vision, resolution of each.
+- "OBS", "Directing", "Vision": the config.toml settings.
 
-Le rôle et la lettre de CE PC sont gardés dans `ce_pc.json` (config.toml est le même sur tous les PC).
+THIS PC's role and letter are kept in `this_pc.json` (config.toml is the same on every PC).
 """
 
 from __future__ import annotations
@@ -27,27 +26,32 @@ from .config import PLAYER_IDS, Config, PlayerConfig
 from .paths import BASE, cli
 
 RESOLUTIONS = ["1280x720", "1600x900", "1920x1080", "2560x1080", "2560x1440", "3440x1440", "3840x2160"]
-ROLES = {"diffuseur": "PC qui diffuse (OBS + directeur + mon agent)", "joueur": "PC joueur (mon agent seulement)"}
-LOCAL_FILE = BASE / "ce_pc.json"
+ROLES = {"streamer": "Streaming PC (OBS + director + my agent)", "player": "Player PC (my agent only)"}
+LEGACY_ROLES = {"diffuseur": "streamer", "joueur": "player"}   # values written by earlier versions
+LOCAL_FILE = BASE / "this_pc.json"
+LEGACY_LOCAL_FILE = BASE / "ce_pc.json"
 CONFIG_FILE = BASE / "config.toml"
 
 
-# =========================================================================== modèle (sans interface)
+# =========================================================================== model (no UI)
 @dataclass
 class LocalSettings:
-    role: str = "diffuseur"
+    role: str = "streamer"
     player_id: str = "A"
     verbose: bool = False
 
     @classmethod
-    def load(cls, path=LOCAL_FILE) -> "LocalSettings":
+    def load(cls, path=None) -> "LocalSettings":
+        if path is None:
+            path = LOCAL_FILE if LOCAL_FILE.exists() or not LEGACY_LOCAL_FILE.exists() else LEGACY_LOCAL_FILE
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             s = cls(**{k: v for k, v in data.items() if k in ("role", "player_id", "verbose")})
         except (OSError, ValueError, TypeError):
             return cls()
+        s.role = LEGACY_ROLES.get(s.role, s.role)
         if s.role not in ROLES:
-            s.role = "diffuseur"
+            s.role = "streamer"
         if s.player_id not in PLAYER_IDS:
             s.player_id = "A"
         return s
@@ -57,19 +61,19 @@ class LocalSettings:
 
 
 def parse_resolution(text: str) -> tuple[int, int]:
-    """'2560x1440' (ou '2560 × 1440') → (2560, 1440)."""
+    """'2560x1440' (or '2560 × 1440') → (2560, 1440)."""
     t = text.lower().replace("×", "x").replace(" ", "")
     try:
         w, h = (int(v) for v in t.split("x"))
     except ValueError:
-        raise ValueError(f"résolution invalide : {text!r} (attendu par ex. 1920x1080)") from None
+        raise ValueError(f"invalid resolution: {text!r} (expected e.g. 1920x1080)") from None
     if w < 320 or h < 240:
-        raise ValueError(f"résolution trop petite : {text!r}")
+        raise ValueError(f"resolution too small: {text!r}")
     return w, h
 
 
 def local_ip() -> str:
-    """IP de ce PC sur le réseau local (sans rien envoyer)."""
+    """This PC's IP on the local network (nothing is sent)."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("10.255.255.255", 1))
@@ -88,13 +92,13 @@ def load_config() -> Config:
 
 
 def build_commands(cfg: Config, local: LocalSettings) -> list[tuple[str, list[str]]]:
-    """Programmes à lancer sur CE PC selon son rôle."""
+    """Programs to start on THIS PC for its role."""
     v = ["-v"] if local.verbose else []
     pid = local.player_id
-    if local.role == "diffuseur":
+    if local.role == "streamer":
         return [
-            # -v : une ligne d'état par seconde, lue par l'appli pour la mosaïque en direct
-            ("Directeur", cli("director", "--log-file", str(BASE / "logs" / "director.log"), "-v")),
+            # -v: one state line per second, read by the app for the live camera wall
+            ("Director", cli("director", "--log-file", str(BASE / "logs" / "director.log"), "-v")),
             (f"Agent {pid}", cli("agent", "--id", pid, "--director-host", "127.0.0.1",
                                  "--log-file", str(BASE / "logs" / f"agent_{pid}.log"), *v)),
         ]
@@ -102,20 +106,20 @@ def build_commands(cfg: Config, local: LocalSettings) -> list[tuple[str, list[st
 
 
 def check_local(cfg: Config, local: LocalSettings) -> list[str]:
-    """Avertissements avant lancement (pas bloquants)."""
+    """Warnings before starting (not blocking)."""
     warn = []
     if local.player_id not in cfg.player_ids:
-        warn.append(f"Le joueur {local.player_id} de ce PC n'est pas dans la liste des joueurs.")
-    if local.role == "joueur" and cfg.network.director_host in ("127.0.0.1", "localhost"):
-        warn.append("PC joueur : « IP du PC qui diffuse » vaut 127.0.0.1 — mets l'IP du PC avec OBS.")
+        warn.append(f"This PC's player {local.player_id} is not in the player list.")
+    if local.role == "player" and cfg.network.director_host in ("127.0.0.1", "localhost"):
+        warn.append("Player PC: \"Streaming PC IP\" is 127.0.0.1. Enter the IP of the PC running OBS.")
     if not cfg.network.token:
-        warn.append("Pas de jeton réseau : n'importe quel PC du réseau peut envoyer des scores.")
+        warn.append("No network token: any PC on the network can send scores.")
     return warn
 
 
 @dataclass
 class ProcessGroup:
-    """Programmes lancés par le lanceur ; leurs sorties arrivent dans une file (affichage)."""
+    """Programs started by the app; their output goes to a queue (for display)."""
     lines: "queue.Queue[str]" = field(default_factory=queue.Queue)
     procs: list = field(default_factory=list)
 
@@ -129,7 +133,7 @@ class ProcessGroup:
         def pump():
             for line in p.stdout:
                 self.lines.put(f"[{name}] {line.rstrip()}")
-            self.lines.put(f"[{name}] — arrêté (code {p.wait()})")
+            self.lines.put(f"[{name}] stopped (exit code {p.wait()})")
 
         threading.Thread(target=pump, daemon=True).start()
 
@@ -148,7 +152,7 @@ class ProcessGroup:
         self.procs.clear()
 
 
-# =========================================================================== formulaire → config
+# =========================================================================== form → config
 SWITCH_FIELDS = ("min_hold", "margin", "fast_min_hold", "fast_margin", "manual_pause", "split_threshold")
 
 
@@ -157,11 +161,11 @@ def _num(values: dict, key: str, kind=float):
     try:
         return int(float(raw)) if kind is int else float(raw)
     except ValueError:
-        raise ValueError(f"Valeur invalide pour « {key} » : {raw!r}") from None
+        raise ValueError(f"Invalid value for \"{key}\": {raw!r}") from None
 
 
 def config_values(cfg: Config, local: LocalSettings) -> dict:
-    """Config → valeurs « à plat » pour remplir un formulaire (chaînes et booléens)."""
+    """Config → flat values to fill a form (strings and booleans)."""
     v = {"local.role": local.role, "local.player_id": local.player_id, "local.verbose": local.verbose}
     for k in ("director_host", "director_port", "token"):
         v[f"network.{k}"] = str(getattr(cfg.network, k))
@@ -187,7 +191,7 @@ def config_values(cfg: Config, local: LocalSettings) -> dict:
 
 
 def values_to_config(base: Config, values: dict) -> tuple[Config, LocalSettings]:
-    """Valeurs du formulaire → (Config, LocalSettings). Lève ValueError avec un message clair."""
+    """Form values → (Config, LocalSettings). Raises ValueError with a clear message."""
     import copy
     import dataclasses
 
@@ -209,7 +213,7 @@ def values_to_config(base: Config, values: dict) -> tuple[Config, LocalSettings]
                                     vision_source=str(values[f"p.{pid}.vision_source"]).strip(),
                                     width=w, height=h, minimap=list(old.minimap) if old else []))
     if not players:
-        raise ValueError("Active au moins un joueur (page Joueurs).")
+        raise ValueError("Turn on at least one player (Players page).")
     cfg.players = players
     cfg.switching = dataclasses.replace(
         cfg.switching, **{k: _num(values, f"switching.{k}") for k in SWITCH_FIELDS},
@@ -218,15 +222,15 @@ def values_to_config(base: Config, values: dict) -> tuple[Config, LocalSettings]
                                      interval=_num(values, "vision.interval"),
                                      w_enemy_near=_num(values, "vision.w_enemy_near"),
                                      minimap=[_num(values, f"vision.minimap.{i}") for i in range(4)])
-    cfgmod.loads(config_writer.dumps(cfg))          # validation complète (mêmes règles que le fichier)
+    cfgmod.loads(config_writer.dumps(cfg))          # full validation (same rules as the file)
     local = LocalSettings(role=str(values["local.role"]), player_id=str(values["local.player_id"]),
                           verbose=bool(values["local.verbose"]))
     return cfg, local
 
 
-# =========================================================================== état en direct (lecture des journaux)
+# =========================================================================== live state (read from the logs)
 _SWITCH = re.compile(r"SWITCH → (\w+) \(([^)]*)\) \| (.*)")
-_STATE = re.compile(r"état=(\S+) (.*?)(?: \| vision.*)?$")
+_STATE = re.compile(r"state=(\S+) (.*?)(?: \| vision.*)?$")
 _SCORE = re.compile(r"\b([A-E])=(-?[\d.]+|None)")
 
 
@@ -235,7 +239,7 @@ def _scores(text: str) -> dict:
 
 
 def parse_line(line: str) -> dict | None:
-    """Ligne de journal du directeur / d'un agent → événement pour l'affichage en direct."""
+    """Director or agent log line → event for the live display."""
     m = _SWITCH.search(line)
     if m:
         target, scene = m.group(1), m.group(2)
@@ -245,24 +249,24 @@ def parse_line(line: str) -> dict | None:
     if m:
         cur = m.group(1)
         return {"kind": "state", "current": cur, "scores": _scores(m.group(2))}
-    if "Partie détectée" in line:
+    if "Game detected" in line:
         m = re.search(r"\[Agent ([A-E])\]", line)
         return {"kind": "in_game", "player": m.group(1) if m else None}
-    if "Changement MANUEL" in line:
+    if "MANUAL switch" in line:
         return {"kind": "manual"}
-    if "Connecté à OBS" in line:
+    if "Connected to OBS" in line:
         return {"kind": "obs", "ok": True}
-    if "OBS injoignable" in line:
+    if "OBS unreachable" in line:
         return {"kind": "obs", "ok": False}
     return None
 
 
 def is_noise(line: str) -> bool:
-    """Lignes d'état (une par seconde) : utiles à la mosaïque, inutiles dans le journal affiché."""
-    return "état=" in line
+    """State lines (one per second): used by the camera wall, noise in the displayed log."""
+    return "state=" in line
 
 
-# =========================================================================== point d'entrée
+# =========================================================================== entry point
 def main(argv=None) -> int:
     from .ui import App
 

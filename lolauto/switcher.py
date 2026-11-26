@@ -1,4 +1,4 @@
-"""Décision de changement de POV pour 2 à 5 joueurs (logique pure, sans OBS ni réseau)."""
+"""POV switching decisions for 2 to 5 players (pure logic, no OBS and no network)."""
 
 from __future__ import annotations
 
@@ -6,28 +6,31 @@ from dataclasses import dataclass
 
 NEG_INF = float("-inf")
 SPLIT = "SPLIT"
+# values written by earlier versions
+LEGACY_SPLIT_MODES = {"combats_separes": "separate_fights", "toujours": "always"}
 
 
 @dataclass
 class SwitchConfig:
-    min_hold: float = 5.0          # durée minimale sur un POV avant un changement « normal »
-    margin: float = 1.0            # avantage de score requis pour un changement normal
-    fast_min_hold: float = 2.0     # durée minimale pour un changement « urgent »
-    fast_margin: float = 5.0       # avantage requis pour un changement urgent
-    stale_after: float = 3.0       # un agent silencieux plus de N s est ignoré
-    split_enabled: bool = True     # écran partagé quand deux joueurs sont dans l'action
-    split_threshold: float = 3.0   # les DEUX scores doivent dépasser ce seuil…
-    split_enter_after: float = 1.5 # …pendant au moins N s
-    split_exit_below: float = 1.5  # on quitte le SPLIT quand le plus bas passe sous ce seuil…
-    split_min_hold: float = 6.0    # …et que le SPLIT est affiché depuis au moins N s
-    manual_pause: float = 20.0     # pause de l'auto après un changement manuel dans OBS
-    # "combats_separes" : pas de SPLIT si les deux joueurs sont dans le MÊME combat (événement commun
-    # récent, ou minimaps proches si la vision est active) ; "toujours" : SPLIT dès que les deux sont actifs
-    split_mode: str = "combats_separes"
+    min_hold: float = 5.0          # minimum time on a POV before a "normal" switch
+    margin: float = 1.0            # score lead needed for a normal switch
+    fast_min_hold: float = 2.0     # minimum time before an "urgent" switch
+    fast_margin: float = 5.0       # score lead needed for an urgent switch
+    stale_after: float = 3.0       # an agent silent for more than N s is ignored
+    split_enabled: bool = True     # split screen when two players are in action
+    split_threshold: float = 3.0   # BOTH scores must exceed this threshold…
+    split_enter_after: float = 1.5 # …for at least N s
+    split_exit_below: float = 1.5  # leave SPLIT when the lower score drops below this…
+    split_min_hold: float = 6.0    # …and SPLIT has been shown for at least N s
+    manual_pause: float = 20.0     # automation pause after a manual switch in OBS
+    # "separate_fights": no SPLIT when both players are in the SAME fight (shared recent event, or close
+    # cameras on the minimap when the vision is on); "always": SPLIT as soon as both are in action
+    split_mode: str = "separate_fights"
 
     def __post_init__(self):
-        if self.split_mode not in ("toujours", "combats_separes"):
-            raise ValueError(f'split_mode doit être "toujours" ou "combats_separes", pas {self.split_mode!r}')
+        self.split_mode = LEGACY_SPLIT_MODES.get(self.split_mode, self.split_mode)
+        if self.split_mode not in ("always", "separate_fights"):
+            raise ValueError(f'split_mode must be "always" or "separate_fights", not {self.split_mode!r}')
 
 
 def _pair(p: str, q: str) -> tuple[str, str]:
@@ -35,27 +38,27 @@ def _pair(p: str, q: str) -> tuple[str, str]:
 
 
 class Switcher:
-    """Reçoit les scores des agents (A…E), dit quand et vers où basculer.
+    """Takes the agents' scores (A…E) and says when and where to switch.
 
-    `decide()` renvoie un identifiant de joueur, "SPLIT" (la paire à montrer est alors dans
-    `pending_pair`) ou None. Il ne modifie pas l'état courant : l'appelant confirme avec `apply()`
-    seulement si OBS a bien accepté le changement.
+    `decide()` returns a player id, "SPLIT" (the pair to show is then in `pending_pair`) or None.
+    It does not change the current state: the caller confirms with `apply()` only once OBS has
+    accepted the switch.
     """
 
     def __init__(self, cfg: SwitchConfig, start: str = "A"):
         self.cfg = cfg
         self.current = start
-        self.split_pair: tuple[str, str] | None = None     # paire affichée quand current == SPLIT
-        self.pending_pair: tuple[str, str] | None = None   # paire proposée par decide()
+        self.split_pair: tuple[str, str] | None = None     # pair shown when current == SPLIT
+        self.pending_pair: tuple[str, str] | None = None   # pair proposed by decide()
         self.last_switch = NEG_INF
         self._score: dict[str, float | None] = {}
         self._dead: dict[str, bool] = {}
         self._seen: dict[str, float] = {}
         self._high_since: dict[tuple, float] = {}
         self._events: dict[str, set] = {}
-        self._together_until: dict[tuple, float] = {}       # paires « ensemble » (vision)
+        self._together_until: dict[tuple, float] = {}       # pairs seen "together" (vision)
 
-    # ------------------------------------------------------------------ entrées
+    # ------------------------------------------------------------------ inputs
     def feed(self, pid: str, score: float | None, settled_dead: bool, now: float, events=()) -> None:
         self._seen[pid] = now
         self._score[pid] = score
@@ -63,7 +66,7 @@ class Switcher:
         self._events[pid] = set(events or ())
 
     def mark_together(self, now: float, pair: tuple[str, str] | None = None, hold: float = 3.0) -> None:
-        """Signal externe (vision) : ces deux joueurs sont au même endroit (None = tous)."""
+        """External signal (vision): these two players are in the same place (None = everyone)."""
         self._together_until[_pair(*pair) if pair else None] = now + hold
 
     def same_fight(self, now: float, p: str = "A", q: str = "B") -> bool:
@@ -81,16 +84,16 @@ class Switcher:
         self.last_switch = now
         self._high_since.clear()
 
-    # ------------------------------------------------------------------ décision
+    # ------------------------------------------------------------------ decision
     def _best(self, live: dict, exclude=()) -> str | None:
-        """Le joueur le plus intéressant (vivant de préférence), à score égal l'ordre alphabétique."""
+        """The most interesting player (alive first); ties go to alphabetical order."""
         cands = [p for p in live if p not in exclude]
         if not cands:
             return None
         return min(cands, key=lambda p: (bool(self._dead.get(p)), -live[p], p))
 
     def _split_candidate(self, live: dict, now: float, held: float) -> tuple[str, str] | None:
-        """Les deux meilleurs, s'ils sont tous les deux dans l'action (et pas ensemble) depuis assez longtemps."""
+        """The two best players, if both have been in action (and not together) long enough."""
         cfg = self.cfg
         if not cfg.split_enabled or len(live) < 2:
             self._high_since.clear()
@@ -98,14 +101,14 @@ class Switcher:
         ranked = sorted(live, key=lambda p: (-live[p], p))
         p, q = ranked[0], ranked[1]
         key = _pair(p, q)
-        together = cfg.split_mode == "combats_separes" and self.same_fight(now, p, q)
+        together = cfg.split_mode == "separate_fights" and self.same_fight(now, p, q)
         if min(live[p], live[q]) < cfg.split_threshold or together:
             self._high_since.pop(key, None)
             return None
         since = self._high_since.setdefault(key, now)
         for other in [k for k in self._high_since if k != key]:
             del self._high_since[other]
-        # un combat à deux est « urgent » : seuil rapide, pas min_hold
+        # two fights at once are "urgent": fast threshold, not min_hold
         if now - since >= cfg.split_enter_after and held >= cfg.fast_min_hold:
             return key
         return None
@@ -118,25 +121,25 @@ class Switcher:
             return None
         held = now - self.last_switch
 
-        # un seul POV disponible (les autres ne sont pas en partie / ont planté) : on y va
+        # only one POV available (the others are not in game or crashed): go there
         if len(live) == 1:
             only = next(iter(live))
             self._high_since.clear()
             return None if self.current == only else only
 
         if self.current == SPLIT:
-            if self.split_pair is None:               # SPLIT choisi à la main dans OBS : les deux meilleurs
+            if self.split_pair is None:               # SPLIT picked by hand in OBS: the two best
                 ranked = sorted(live, key=lambda k: (-live[k], k))
                 self.split_pair = _pair(ranked[0], ranked[1])
             p, q = self.split_pair
             if p not in live or q not in live:
                 return self._best(live)
             higher = p if (live[p], q) >= (live[q], p) else q
-            if cfg.split_mode == "combats_separes" and self.same_fight(now, p, q) and held >= cfg.fast_min_hold:
-                return higher                         # même combat : un seul POV suffit
+            if cfg.split_mode == "separate_fights" and self.same_fight(now, p, q) and held >= cfg.fast_min_hold:
+                return higher                         # same fight: one POV is enough
             if min(live[p], live[q]) < cfg.split_exit_below and held >= cfg.split_min_hold:
                 return higher
-            if held >= cfg.split_min_hold:            # une autre paire est devenue plus intéressante
+            if held >= cfg.split_min_hold:            # another pair became more interesting
                 cand = self._split_candidate(live, now, held)
                 if cand and cand != _pair(p, q):
                     self.pending_pair = cand
@@ -149,10 +152,10 @@ class Switcher:
             return SPLIT
 
         cur = self.current
-        if cur not in live:                           # le joueur affiché n'envoie plus rien
+        if cur not in live:                           # the shown player stopped sending
             return self._best(live)
         if self._high_since and not self._dead.get(cur):
-            return None                               # un SPLIT se prépare : pas de va-et-vient juste avant
+            return None                               # a SPLIT is coming: no back-and-forth just before
         oth = self._best(live, exclude=(cur,))
         if oth is None:
             return None

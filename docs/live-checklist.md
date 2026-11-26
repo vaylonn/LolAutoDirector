@@ -5,14 +5,14 @@ About 10 minutes. Go in order: each step assumes the previous one is done.
 ## 15 minutes before
 
 - [ ] Every player PC is on **Ethernet** (and on power for a laptop)
-- [ ] The streaming PC's IP has not changed (`ipconfig`): it matches *Ce PC › IP du PC qui diffuse*
+- [ ] The streaming PC's IP has not changed (`ipconfig`): it matches *This PC › Streaming PC IP*
 - [ ] Every PC has the same `config.toml` (same IP and token), and each player has their own letter
 - [ ] No pending update for League, OBS, Windows or macOS
 
 ## OBS on the streaming PC
 
 - [ ] OBS is open and its WebSocket server is on
-- [ ] In the app, *OBS › Tester la connexion* succeeds and the `POV_x` and `SPLIT` scenes are listed
+- [ ] In the app, *OBS › Test connection* succeeds and the `POV_x` and `SPLIT` scenes are listed
 - [ ] Each remote `POV_x` shows the player's NDI image, not black, not stuttering
 - [ ] **Stream delay** is on (ranked games: stream sniping)
 - [ ] Audio levels checked: mic, game, teammates (their audio comes with the NDI sources)
@@ -20,8 +20,8 @@ About 10 minutes. Go in order: each step assumes the previous one is done.
 
 ## Start the director (5 minutes before)
 
-- [ ] Each teammate: agent started (*Démarrer la régie* in the app, or `mac/start.command`)
-- [ ] Streaming PC: **Régie › Démarrer la régie** shows *OBS connecté*
+- [ ] Each teammate: agent started (*Start directing* in the app, or `mac/start.command`)
+- [ ] Streaming PC: **Control room › Start directing** shows *OBS connected*
 - [ ] No error in the app's log
 
 ## First two minutes of the game
@@ -43,15 +43,15 @@ Decide this **before** going live.
 
 | Signal | Action |
 |---|---|
-| More than one cut every 3 s for a minute | *Arrêter la régie* (stop): OBS stays on the current scene, switch by hand |
-| *OBS injoignable* (OBS unreachable) keeps showing | Check OBS and its WebSocket, otherwise switch by hand |
+| More than one cut every 3 s for a minute | *Stop directing*: OBS stays on the current scene, switch by hand |
+| *OBS unreachable* keeps showing | Check OBS and its WebSocket, otherwise switch by hand |
 | A tile stays grey during the game | Restart that player's agent; check their firewall, IP, token and letter |
-| A player's image is black or frozen | Restart OBS on their PC; meanwhile turn that player off in *Joueurs* |
+| A player's image is black or frozen | Restart OBS on their PC; meanwhile turn that player off in *Players* |
 | The game lags because of the vision | Turn the vision off in *Vision* and restart the director |
 
-Stopping the director stops neither the stream nor OBS. Click *Démarrer la régie* again to resume.
+Stopping the director stops neither the stream nor OBS. Click *Start directing* again to resume.
 
 ## After the stream
 
-- [ ] *Arrêter la régie* on every PC
+- [ ] *Stop directing* on every PC
 - [ ] If something was odd, keep `logs/director.log` and note the time and what happened

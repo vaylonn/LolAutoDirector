@@ -1,7 +1,7 @@
-"""Agent : tourne sur CHAQUE PC de jeu. Lit l'API locale LoL, calcule un score, l'envoie au directeur (UDP).
+"""Agent: runs on EVERY gaming PC. Reads the local LoL API, computes a score and sends it to the director (UDP).
 
-    python -m lolauto.agent --id A     # sur ton PC
-    python -m lolauto.agent --id B     # sur le MacBook de ton pote
+    python -m lolauto agent --id A     # on the streaming PC
+    python -m lolauto agent --id B     # on a teammate's PC
 """
 
 from __future__ import annotations
@@ -24,20 +24,20 @@ log = logging.getLogger("agent")
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(description="Agent LoL → directeur")
-    ap.add_argument("--id", required=True, choices=["A", "B", "C", "D", "E"], help="identité de ce PC (joueur)")
-    ap.add_argument("--config", help="chemin de config.toml")
-    ap.add_argument("--api-url", help="remplace [riot].api_url (simulateur)")
-    ap.add_argument("--director-host", help="remplace [network].director_host")
-    ap.add_argument("--director-port", type=int, help="remplace [network].director_port")
-    ap.add_argument("--once", action="store_true", help="un seul relevé affiché puis quitte (diagnostic)")
+    ap = argparse.ArgumentParser(description="LoL agent → director")
+    ap.add_argument("--id", required=True, choices=["A", "B", "C", "D", "E"], help="this PC's player letter")
+    ap.add_argument("--config", help="path to config.toml")
+    ap.add_argument("--api-url", help="overrides [riot].api_url (simulator)")
+    ap.add_argument("--director-host", help="overrides [network].director_host")
+    ap.add_argument("--director-port", type=int, help="overrides [network].director_port")
+    ap.add_argument("--once", action="store_true", help="print one reading and exit (diagnostics)")
     ap.add_argument("-v", "--verbose", action="store_true")
-    ap.add_argument("--log-file", help="écrit aussi le journal dans ce fichier (ex. logs/agent_A.log)")
+    ap.add_argument("--log-file", help="also write the log to this file (e.g. logs/agent_A.log)")
     return ap
 
 
 class Agent:
-    """Un relevé = un message pour le directeur. Séparé de la boucle réseau pour être testable."""
+    """One reading = one message for the director. Kept apart from the network loop so it can be tested."""
 
     def __init__(self, pid: str, cfg, client):
         self.pid, self.cfg, self.client = pid, cfg, client
@@ -45,7 +45,7 @@ class Agent:
         self.me: str | None = None
         self.enemies: list[str] = []
         self.in_game = False
-        self.last: object = None          # dernier Result (diagnostic)
+        self.last: object = None          # last Result (diagnostics)
 
     def step(self, now: float) -> dict:
         msg = {"v": 1, "token": self.cfg.network.token, "id": self.pid,
@@ -63,13 +63,13 @@ class Agent:
                 self.last = res
         except requests.RequestException:
             if self.in_game:
-                log.info("Partie terminée / API injoignable : en attente d'une nouvelle partie")
+                log.info("Game over or API unreachable: waiting for the next game")
             self.me, self.enemies, self.last = None, [], None
             self.scorer.reset()
-        except Exception:  # un bug ne doit jamais tuer l'agent en plein live
-            log.exception("Erreur inattendue (l'agent continue)")
+        except Exception:  # a bug must never kill the agent mid-stream
+            log.exception("Unexpected error (the agent keeps running)")
         if msg["in_game"] and not self.in_game:
-            log.info("Partie détectée (joueur : %s)", self.me)
+            log.info("Game detected (player: %s)", self.me)
         self.in_game = msg["in_game"]
         return msg
 
@@ -91,11 +91,11 @@ def main(argv=None) -> int:
         msg = agent.step(t0)
         if args.once:
             if agent.last is None:
-                print("API injoignable : lance d'abord une partie (même personnalisée contre des bots).")
+                print("Game API unreachable: start a game first (a custom game against bots works).")
                 return 1
             r = agent.last
             print(json.dumps({"me": agent.me, "score": r.score, "parts": r.parts, "role": r.role,
-                              "hp": r.hp_ratio, "dead": r.dead, "ennemis": agent.enemies}, indent=2))
+                              "hp": r.hp_ratio, "dead": r.dead, "enemies": agent.enemies}, indent=2))
             return 0
         if msg["in_game"] and t0 - last_log > 1.0:
             last_log = t0
@@ -103,7 +103,7 @@ def main(argv=None) -> int:
         try:
             sock.sendto(json.dumps(msg).encode(), target)
         except OSError as e:
-            log.warning("Envoi UDP impossible : %s", e)
+            log.warning("UDP send failed: %s", e)
         time.sleep(max(0.0, cfg.riot.poll_interval - (time.monotonic() - t0)))
 
 

@@ -7,8 +7,8 @@ cd "$(dirname "$0")/.." || exit 1
 source .venv/bin/activate
 mkdir -p logs
 ID="$1"
-[ -z "$ID" ] && [ -f joueur.txt ] && ID="$(cat joueur.txt)"
+[ -z "$ID" ] && [ -f player.txt ] && ID="$(cat player.txt)"
 [ -z "$ID" ] && read -r -p "Your player letter (B, C, D or E): " ID
 ID="$(echo "$ID" | tr '[:lower:]' '[:upper:]')"
-echo "$ID" > joueur.txt
+echo "$ID" > player.txt
 exec caffeinate -dimsu python -m lolauto agent --id "$ID" --log-file "logs/agent_$ID.log"

@@ -24,24 +24,24 @@ image stutter.
 4. *Tools › DistroAV NDI Output Settings*: tick *Main Output* and give it a name, e.g. `PC LEO`.
 5. If the Windows firewall asks about OBS, allow it on **private networks**.
 
-Tell the streamer the name you picked: they select it as your *Source vidéo* in their app.
+Tell the streamer the name you picked: they select it as your *Video source* in their app.
 
 ## 3. Start the agent
 
 1. Download **`LoLAutoDirector.exe`** from the [latest release](https://github.com/vaylonn/LolAutoDirector/releases/latest).
 2. Put it in a folder together with the streamer's **`config.toml`**.
 3. Open it. Windows SmartScreen may warn about an unknown publisher: *More info › Run anyway*.
-4. Page **Ce PC** (this PC):
-   - *Ce PC est* (this PC is): **PC joueur** (player PC);
-   - *Joueur* (player): your letter;
-   - *IP du PC qui diffuse* (streaming PC's IP) and *Jeton* (token) are already filled in from `config.toml`.
-5. Click **Enregistrer** (save).
+4. Page **This PC**:
+   - *This PC is the*: **Player PC**;
+   - *Player*: your letter;
+   - *Streaming PC IP* and *Token* are already filled in from `config.toml`.
+5. Click **Save**.
 
 ## During the stream
 
 1. Open OBS first: the NDI output starts on its own.
-2. In the app, page **Régie** › **Démarrer la régie** (start). Keep the window open.
-3. Launch your game. The log shows `Partie détectée` (game detected) when it starts.
+2. In the app, page **Control room** › **Start directing**. Keep the window open.
+3. Launch your game. The log shows `Game detected` when it starts.
 
 ## If something goes wrong
 
@@ -50,6 +50,6 @@ Tell the streamer the name you picked: they select it as your *Source vidéo* in
 | The streamer cannot see your NDI source | Same network, Ethernet, OBS allowed on private networks in the firewall |
 | Your image is black on their side | In your Game Capture, try *Capture any fullscreen application*; start OBS before the game |
 | The camera never comes to you | Use the streamer's exact `config.toml` (IP and token), and check your letter |
-| `Partie détectée` never shows | Normal outside a game: the game API only exists during a match |
+| `Game detected` never shows | Normal outside a game: the game API only exists during a match |
 
 Your log is in `logs\agent_<letter>.log` next to the exe. Send it to the streamer if something is off.

@@ -1,4 +1,4 @@
-"""Journalisation commune : console (UTF-8, même sous Windows) + fichier optionnel."""
+"""Shared logging setup: console (UTF-8, even on Windows) plus an optional file."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 def setup(verbose: bool = False, log_file: str | None = None, fmt: str = "%(asctime)s %(message)s") -> None:
-    if hasattr(sys.stdout, "reconfigure"):  # Windows : console/fichier en cp1252 → accents et flèches cassés
+    if hasattr(sys.stdout, "reconfigure"):  # Windows: the console defaults to cp1252, which breaks non-ASCII characters
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
     if log_file:
@@ -16,5 +16,5 @@ def setup(verbose: bool = False, log_file: str | None = None, fmt: str = "%(asct
         handlers.append(logging.FileHandler(log_file, mode="a", encoding="utf-8"))
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO, format=fmt, datefmt="%H:%M:%S",
                         handlers=handlers, force=True)
-    # la lib obsws-python logge les paramètres de connexion (dont le mot de passe) et des tracebacks
+    # obsws-python logs its connection parameters (password included) and tracebacks: silence it
     logging.getLogger("obsws_python").setLevel(logging.CRITICAL)

@@ -1,4 +1,4 @@
-"""Chargement et validation de config.toml (les clés inconnues sont refusées : pas de faute de frappe silencieuse)."""
+"""Loads and validates config.toml (unknown keys are rejected, so typos never go unnoticed)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 if sys.version_info >= (3, 11):
     import tomllib
-else:  # Python 3.9 / 3.10 (ex. Python fourni par Xcode sur macOS)
+else:  # Python 3.9 / 3.10 (e.g. the Python shipped with Xcode on macOS)
     import tomli as tomllib
 
 from .scoring import ScoringConfig
@@ -48,22 +48,22 @@ PLAYER_IDS = ("A", "B", "C", "D", "E")
 
 @dataclass
 class PlayerConfig:
-    """Un joueur = un PC de jeu (2 à 5). Le PC qui diffuse est en général « A »."""
+    """One player = one gaming PC (2 to 5). The streaming PC is usually "A"."""
     id: str = "A"
-    name: str = ""                 # pour les journaux et le lanceur
-    scene: str = ""                # scène OBS de son POV ("" = "POV_<id>")
-    vision_source: str = ""        # source OBS lue par la vision (capture de jeu / NDI) ; "" = pas de vision
-    width: int = 1920              # résolution du jeu de CE joueur (taille demandée à OBS pour la vision)
+    name: str = ""                 # shown in the logs and the app
+    scene: str = ""                # OBS scene of this player's POV ("" = "POV_<id>")
+    vision_source: str = ""        # OBS source read by the vision (game capture / NDI); "" = no vision
+    width: int = 1920              # THIS player's game resolution (size requested from OBS for the vision)
     height: int = 1080
-    minimap: list = field(default_factory=list)   # zone de minimap propre à ce joueur ([] = [vision].minimap)
+    minimap: list = field(default_factory=list)   # minimap area for this player ([] = [vision].minimap)
 
     def __post_init__(self):
         if self.id not in PLAYER_IDS:
-            raise ValueError(f"[[players]] id doit être l'une de {PLAYER_IDS}, pas {self.id!r}")
+            raise ValueError(f"[[players]] id must be one of {PLAYER_IDS}, not {self.id!r}")
         if not self.scene:
             self.scene = f"POV_{self.id}"
         if self.width < 320 or self.height < 240:
-            raise ValueError(f"[[players]] {self.id} : résolution {self.width}x{self.height} invalide")
+            raise ValueError(f"[[players]] {self.id}: invalid resolution {self.width}x{self.height}")
 
 
 @dataclass
@@ -96,7 +96,7 @@ def _build(cls, data: dict, where: str):
     unknown = set(data) - names
     if unknown:
         raise ValueError(
-            f"config.toml [{where}] : clé(s) inconnue(s) {sorted(unknown)} — attendu : {sorted(names)}")
+            f"config.toml [{where}]: unknown key(s) {sorted(unknown)}, expected: {sorted(names)}")
     return cls(**data)
 
 
@@ -118,14 +118,14 @@ SECTIONS = {"network": NetworkConfig, "riot": RiotConfig, "obs": ObsConfig,
 def from_dict(raw: dict) -> Config:
     unknown = set(raw) - set(SECTIONS) - {"players"}
     if unknown:
-        raise ValueError(f"config.toml : section(s) inconnue(s) {sorted(unknown)}")
+        raise ValueError(f"config.toml: unknown section(s) {sorted(unknown)}")
     cfg = Config(**{name: _build(cls, raw.get(name, {}), name) for name, cls in SECTIONS.items()})
     if "players" in raw:
         players = [_build(PlayerConfig, p, "players") for p in raw["players"]]
         ids = [p.id for p in players]
         if not 1 <= len(players) <= 5:
-            raise ValueError("config.toml : il faut entre 1 et 5 [[players]]")
+            raise ValueError("config.toml: 1 to 5 [[players]] are required")
         if len(set(ids)) != len(ids):
-            raise ValueError(f"config.toml : identifiants de joueurs en double {ids}")
+            raise ValueError(f"config.toml: duplicate player ids {ids}")
         cfg.players = players
     return cfg

@@ -9,7 +9,8 @@ dist/
 
 # Local files (personal settings, never commit them)
 config.toml
+this_pc.json
 ce_pc.json
-joueur.txt
+player.txt
 logs/
 data/

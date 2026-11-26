@@ -1,4 +1,4 @@
-"""Écriture de config.toml (utilisée par le lanceur) : fichier complet, commenté, relisible par `config.load`."""
+"""Writes config.toml (used by the app): a complete, commented file that `config.load` reads back."""
 
 from __future__ import annotations
 
@@ -9,40 +9,40 @@ from pathlib import Path
 from .config import Config
 
 COMMENTS = {
-    "network.director_host": "IP locale du PC qui diffuse (OBS + directeur) : les agents y envoient leur score",
-    "network.director_port": "port UDP (à ouvrir dans le pare-feu du PC qui diffuse)",
-    "network.token": "même valeur sur tous les PC : le directeur ignore les autres paquets",
-    "riot.api_url": "API locale du client LoL (ne change que pour le simulateur)",
-    "riot.poll_interval": "secondes entre deux lectures",
-    "obs.password": "OBS > Outils > Paramètres du serveur WebSocket",
-    "obs.scene_split": "écran partagé ; \"\" pour désactiver",
-    "players.id": "A à E ; le PC qui diffuse est en général A",
-    "players.scene": "scène OBS de son POV",
-    "players.vision_source": "source OBS lue par la vision (capture de jeu ou NDI) ; \"\" = pas de vision",
-    "players.width": "résolution du jeu de ce joueur",
-    "players.minimap": "zone de minimap propre à ce joueur ([] = celle de [vision])",
-    "switching.min_hold": "durée minimale sur un POV avant un changement normal (s)",
-    "switching.margin": "avance de score requise pour un changement normal",
-    "switching.fast_min_hold": "changement urgent possible après N s…",
-    "switching.fast_margin": "…si l'autre a au moins cette avance",
-    "switching.stale_after": "agent silencieux depuis N s = ignoré",
-    "switching.manual_pause": "changement de scène à la main → l'auto se tait N s",
-    "switching.split_mode": "\"combats_separes\" (SPLIT seulement si combats différents) ou \"toujours\"",
-    "switching.split_threshold": "les DEUX scores au-dessus de ce seuil…",
-    "switching.split_enter_after": "…pendant N s → SPLIT",
-    "switching.split_exit_below": "on sort du SPLIT quand le plus bas repasse sous ce seuil…",
-    "switching.split_min_hold": "…et que le SPLIT est affiché depuis N s",
-    "vision.interval": "secondes entre deux lectures de minimap",
-    "vision.minimap": "zone de la minimap [x0, y0, x1, y1] en fractions de l'image (calibrée en 16:9)",
-    "vision.near_radius": "« ennemi proche » = à moins de cette fraction de minimap de la caméra",
-    "vision.together_dist": "caméras de deux joueurs plus proches = même combat (pas de SPLIT)",
-    "vision.w_enemy_near": "bonus par ennemi proche EN PLUS de l'habituel du joueur",
-    "vision.enemy_champions": "forcer les champions adverses (rediff) ; [] = lus dans l'API du jeu",
+    "network.director_host": "local IP of the streaming PC (OBS + director): agents send their score there",
+    "network.director_port": "UDP port (allow it in the streaming PC's firewall)",
+    "network.token": "same value on every PC: the director ignores other packets",
+    "riot.api_url": "local LoL client API (only changed by the simulator)",
+    "riot.poll_interval": "seconds between two reads",
+    "obs.password": "OBS > Tools > WebSocket Server Settings",
+    "obs.scene_split": "split-screen scene; \"\" to disable",
+    "players.id": "A to E; the streaming PC is usually A",
+    "players.scene": "OBS scene of this player's POV",
+    "players.vision_source": "OBS source read by the vision (game capture or NDI); \"\" = no vision",
+    "players.width": "this player's game resolution",
+    "players.minimap": "minimap area for this player ([] = the one in [vision])",
+    "switching.min_hold": "minimum time on a POV before a normal switch (s)",
+    "switching.margin": "score lead needed for a normal switch",
+    "switching.fast_min_hold": "urgent switch allowed after N s…",
+    "switching.fast_margin": "…if the other player leads by at least this much",
+    "switching.stale_after": "agent silent for N s = ignored",
+    "switching.manual_pause": "manual scene change → automation pauses for N s",
+    "switching.split_mode": "\"separate_fights\" (SPLIT only for separate fights) or \"always\"",
+    "switching.split_threshold": "BOTH scores above this threshold…",
+    "switching.split_enter_after": "…for N s → SPLIT",
+    "switching.split_exit_below": "leave SPLIT when the lower score drops below this…",
+    "switching.split_min_hold": "…and SPLIT has been shown for N s",
+    "vision.interval": "seconds between two minimap reads",
+    "vision.minimap": "minimap area [x0, y0, x1, y1] as fractions of the image (calibrated for 16:9)",
+    "vision.near_radius": "\"nearby enemy\" = closer than this fraction of the minimap to the camera",
+    "vision.together_dist": "two players' cameras closer than this = same fight (no SPLIT)",
+    "vision.w_enemy_near": "bonus per nearby enemy ABOVE the player's usual count",
+    "vision.enemy_champions": "force the enemy champions (replays); [] = read from the game API",
 }
 
 HEADER = """# =====================================================================
-#  lol-auto-director — configuration (le MÊME fichier sur tous les PC)
-#  Fichier généré par le lanceur : tu peux le modifier à la main, il sera relu tel quel.
+#  LoL Auto Director — configuration (the SAME file on every PC)
+#  Written by the app. You can edit it by hand: it is read back as is.
 # =====================================================================
 """
 
@@ -58,7 +58,7 @@ def _val(v) -> str:
         return "[" + ", ".join(_val(x) for x in v) + "]"
     if isinstance(v, dict):
         return "{ " + ", ".join(f"{_key(k)} = {_val(x)}" for k, x in v.items()) + " }"
-    raise TypeError(f"valeur non sérialisable : {v!r}")
+    raise TypeError(f"value cannot be serialized: {v!r}")
 
 
 def _key(k: str) -> str:
@@ -85,7 +85,7 @@ def dumps(cfg: Config) -> str:
     table("riot", cfg.riot)
     table("obs", cfg.obs)
 
-    out.append("\n# Un bloc par joueur / PC de jeu (2 à 5).")
+    out.append("\n# One block per player / gaming PC (2 to 5).")
     for p in cfg.players:
         out.append("[[players]]")
         for f in dataclasses.fields(p):
@@ -94,13 +94,13 @@ def dumps(cfg: Config) -> str:
 
     table("switching", cfg.switching)
     table("scoring", cfg.scoring, skip=("role_bias", "events", "objectives"))
-    out.append("\n# Petit bonus de base selon le rôle.")
+    out.append("\n# Small base bonus by role.")
     out.append("[scoring.role_bias]")
     out += [_line("scoring.role_bias", k, v) for k, v in cfg.scoring.role_bias.items()]
-    out.append("\n# Points quand le joueur est acteur de l'événement (tueur, assist…).")
+    out.append("\n# Points when the player takes part in the event (killer, assist…).")
     out.append("[scoring.events]")
     out += [_line("scoring.events", k, v) for k, v in cfg.scoring.events.items()]
-    out.append("\n# Fenêtres d'objectifs (`at` = temps de jeu en s). Exemples : à vérifier selon la saison.")
+    out.append("\n# Objective windows (`at` = game time in s). Examples: check them for the current season.")
     for o in cfg.scoring.objectives:
         out.append("[[scoring.objectives]]")
         out += [_line("scoring.objectives", k, v) for k, v in o.items()]
@@ -113,5 +113,5 @@ def save(cfg: Config, path: str | Path) -> None:
     from . import config as cfgmod
 
     text = dumps(cfg)
-    cfgmod.loads(text)                    # ne jamais écrire un fichier que l'on ne saurait pas relire
+    cfgmod.loads(text)                    # never write a file that could not be read back
     Path(path).write_text(text, encoding="utf-8")

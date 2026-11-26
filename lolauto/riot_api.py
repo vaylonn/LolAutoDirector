@@ -1,12 +1,12 @@
-"""Client minimal de l'API locale « Live Client Data » de League of Legends (port 2999)."""
+"""Minimal client for League of Legends' local Live Client Data API (port 2999)."""
 
 from __future__ import annotations
 
 import requests
 import urllib3
 
-# Le client de jeu utilise un certificat auto-signé sur 127.0.0.1 : on désactive l'alerte,
-# et uniquement pour cette connexion locale.
+# The game client serves a self-signed certificate on 127.0.0.1: silence the warning
+# (verification is only disabled for this local connection).
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
@@ -26,5 +26,5 @@ class RiotClient:
         return self._get("allgamedata")
 
     def active_name(self) -> str:
-        """Riot ID du joueur local (« Pseudo#TAG »)."""
+        """Riot ID of the local player ("Name#TAG")."""
         return self._get("activeplayername")

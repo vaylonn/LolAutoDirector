@@ -1,15 +1,15 @@
-"""Point d'entrée unique :  python -m lolauto <commande>  (ou LoLAutoDirector.exe <commande>).
+"""Single entry point:  python -m lolauto <command>  (or LoLAutoDirector.exe <command>).
 
-Sans commande : ouvre le lanceur graphique.
+Without a command, opens the app.
 
-    gui              lanceur graphique (défaut)
-    director         directeur (PC qui diffuse) — pilote OBS
-    agent            agent d'un PC de jeu (--id A..E)
-    simulate         simulation complète sans jeu ni OBS (~66 s)
-    mock             faux serveur de l'API du jeu (tests)
-    obs-setup        prépare les scènes OBS (--split, --game-capture ID)
-    vision-sources   garde les captures de la vision actives dans toutes les scènes
-    vision-debug     captures annotées de la minimap (calibration)
+    gui              the app (default)
+    director         the director (streaming PC), drives OBS
+    agent            a gaming PC's agent (--id A..E)
+    simulate         full simulated game, no game or OBS needed (~66 s)
+    mock             fake game API server (testing)
+    obs-setup        creates the OBS scenes (--split, --game-capture ID)
+    vision-sources   keeps the vision's captures active in every scene
+    vision-debug     annotated minimap captures (calibration)
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import sys
 
 def _commands():
     from . import agent, director
-    from .outils import mock_api, obs_setup, simulation, vision_debug, vision_sources
+    from .tools import mock_api, obs_setup, simulation, vision_debug, vision_sources
 
     def gui(argv):
         from . import launcher
@@ -38,8 +38,8 @@ def _commands():
 
 
 def _utf8_console() -> None:
-    """Windows : la console / les tubes sont en cp1252 et l'exécutable ignore PYTHONIOENCODING.
-    Sans ça, le premier « → » ou « é » écrit fait planter le programme."""
+    """Windows consoles and pipes default to cp1252 and the executable ignores PYTHONIOENCODING:
+    without this, the first non-ASCII character printed would crash the program."""
     for stream in (sys.stdout, sys.stderr):
         if stream is not None and hasattr(stream, "reconfigure"):
             try:
@@ -59,7 +59,7 @@ def main(argv=None) -> int:
         return 0
     cmd = cmds.get(argv[0])
     if cmd is None:
-        print(f"Commande inconnue : {argv[0]!r}\n{__doc__}")
+        print(f"Unknown command: {argv[0]!r}\n{__doc__}")
         return 2
     return cmd(argv[1:]) or 0
 

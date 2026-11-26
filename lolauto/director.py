@@ -1,7 +1,7 @@
-"""Directeur : tourne sur le PC qui diffuse (celui d'OBS). Reçoit les scores et pilote OBS.
+"""Director: runs on the streaming PC (the one with OBS). Receives the scores and drives OBS.
 
-    python -m lolauto.director              # pilote OBS pour de vrai
-    python -m lolauto.director --dry-run    # affiche seulement les décisions (test sans OBS)
+    python -m lolauto director              # drives OBS for real
+    python -m lolauto director --dry-run    # only prints the decisions (test without OBS)
 """
 
 from __future__ import annotations
@@ -20,9 +20,9 @@ from .switcher import SwitchConfig, Switcher
 log = logging.getLogger("director")
 
 
-# --------------------------------------------------------------------------- contrôleurs
+# --------------------------------------------------------------------------- controllers
 class DryRunController:
-    """Simule OBS : se souvient de la scène « courante », n'envoie rien."""
+    """Fake OBS: remembers the "current" scene and sends nothing."""
 
     def __init__(self, initial: str | None = None):
         self.current = initial
@@ -43,7 +43,7 @@ class DryRunController:
 
 
 class ObsController:
-    """Pilote OBS via obs-websocket v5 (intégré à OBS ≥ 28). Se reconnecte tout seul."""
+    """Drives OBS through obs-websocket v5 (built into OBS 28+). Reconnects on its own."""
 
     def __init__(self, host: str, port: int, password: str, timeout: float = 3.0):
         self.args = dict(host=host, port=port, password=password, timeout=timeout)
@@ -56,15 +56,15 @@ class ObsController:
                 import obsws_python as obs
 
                 self._cl = obs.ReqClient(**self.args)
-                log.info("Connecté à OBS %s", self._cl.get_version().obs_version)
+                log.info("Connected to OBS %s", self._cl.get_version().obs_version)
             except Exception as e:
                 self._cl = None
                 self._next_try = time.monotonic() + 2.0
-                log.warning("OBS injoignable (%s) — nouvel essai dans 2 s", e)
+                log.warning("OBS unreachable (%s), retrying in 2 s", e)
         return self._cl
 
     def _lost(self, e: Exception) -> None:
-        log.warning("Connexion OBS perdue (%s)", e)
+        log.warning("Lost connection to OBS (%s)", e)
         self._cl = None
         self._next_try = time.monotonic() + 2.0
 
@@ -87,7 +87,7 @@ class ObsController:
             cl.set_current_program_scene(scene)
             return True
         except Exception as e:
-            log.warning("Impossible d'afficher la scène %r (%s)", scene, e)
+            log.warning("Could not show scene %r (%s)", scene, e)
             return False
 
     def scene_names(self) -> list[str] | None:
@@ -101,9 +101,9 @@ class ObsController:
             return None
 
     def set_split_pair(self, split_scene: str, left: str, right: str) -> bool:
-        """Écran partagé dynamique : la scène SPLIT contient chaque scène POV_x deux fois (moitié gauche
-        et moitié droite, cf. `python -m lolauto obs-setup --split`). On n'affiche que `left` à gauche et
-        `right` à droite. Une scène SPLIT faite à la main (sans scènes imbriquées) est laissée telle quelle.
+        """Dynamic split screen: the SPLIT scene holds every POV_x scene twice (left half and right
+        half, see `python -m lolauto obs-setup --split`). Only `left` is shown on the left and `right` on
+        the right. A hand-made SPLIT scene (without nested scenes) is left as it is.
         """
         cl = self._client()
         if cl is None:
@@ -123,13 +123,13 @@ class ObsController:
                     cl.set_scene_item_enabled(split_scene, it["sceneItemId"], want)
             return True
         except Exception as e:
-            log.warning("Impossible de préparer l'écran partagé (%s)", e)
+            log.warning("Could not prepare the split screen (%s)", e)
             return False
 
 
-# --------------------------------------------------------------------------- cerveau
+# --------------------------------------------------------------------------- brain
 class Director:
-    POLL_EVERY = 0.5  # fréquence de lecture de la scène OBS courante (détection du manuel)
+    POLL_EVERY = 0.5  # how often the current OBS scene is read (manual switch detection)
 
     def __init__(self, cfg: SwitchConfig, scenes: dict[str, str], controller, start: str | None = None,
                  vision=None):
@@ -141,19 +141,19 @@ class Director:
         self.ctl = controller
         self.sw = Switcher(cfg, start)
         self.pause_until = 0.0
-        self.external = False   # OBS est sur une scène qu'on ne gère pas (BRB, intro…)
+        self.external = False   # OBS shows a scene we do not manage (BRB, intro…)
         self._synced = False
         self._last_poll = float("-inf")
         self._retry_after = 0.0
         self._validated = False
-        self.vision = vision    # VisionRunner (ou tout objet avec bonus(pid, now) et together(now))
+        self.vision = vision    # VisionRunner (or any object with bonus(pid, now) and together_pairs(now))
 
     def handle(self, msg: dict, now: float) -> None:
         score = msg.get("score") if msg.get("in_game") else None
         if self.vision is not None and msg.get("enemies") and hasattr(self.vision, "set_enemies"):
-            self.vision.set_enemies(msg["enemies"])        # portraits des champions adverses
+            self.vision.set_enemies(msg["enemies"])        # enemy champions' portraits
         if score is not None and self.vision is not None and not msg.get("dead") and score >= 0:
-            score += self.vision.bonus(msg["id"], now)   # ennemis proches sur la minimap
+            score += self.vision.bonus(msg["id"], now)   # nearby enemies on the minimap
         self.sw.feed(msg["id"], score, msg.get("dead", False), now, msg.get("ev") or ())
 
     def _key_of(self, scene: str | None) -> str | None:
@@ -166,11 +166,11 @@ class Director:
         self._validated = True
         for key, scene in list(self.scenes.items()):
             if scene not in names:
-                log.warning("Scène OBS introuvable : %r (%s)", scene, key)
+                log.warning("OBS scene not found: %r (%s)", scene, key)
                 if key == "SPLIT":
                     del self.scenes["SPLIT"]
                     self.sw.cfg = dataclasses.replace(self.sw.cfg, split_enabled=False)
-                    log.warning("→ mode SPLIT désactivé")
+                    log.warning("→ SPLIT mode disabled")
 
     def _sync(self, now: float) -> None:
         cur = self.ctl.get_current()
@@ -179,22 +179,22 @@ class Director:
         key = self._key_of(cur)
         if key is None:
             if not self.external:
-                log.info("Scène OBS %r non gérée : l'automatique se met en pause", cur)
+                log.info("OBS scene %r is not managed: automation paused", cur)
             self.external = True
             return
         if self.external or not self._synced:
-            self.sw.apply(key, now)           # on s'aligne sur OBS, sans pause
+            self.sw.apply(key, now)           # follow OBS, without pausing
             self.sw.last_switch = float("-inf")
             self.external = False
             self._synced = True
             return
         if cur != self.scenes.get(self.sw.current):
-            log.info("Changement MANUEL détecté (%s) : auto en pause %.0f s", cur, self.cfg.manual_pause)
+            log.info("MANUAL switch detected (%s): automation paused for %.0f s", cur, self.cfg.manual_pause)
             self.sw.apply(key, now)
             self.pause_until = now + self.cfg.manual_pause
 
     def step(self, now: float):
-        """Un tour de boucle. Retourne (cible, scène) si un changement a eu lieu."""
+        """One loop turn. Returns (target, scene) when a switch happened."""
         if not self._validated:
             self._validate()
         if self.vision is not None:
@@ -225,13 +225,13 @@ class Director:
         return None
 
 
-# --------------------------------------------------------------------------- programme
+# --------------------------------------------------------------------------- program
 def _fmt(live: dict, ids) -> str:
     return " ".join(f"{p}={live.get(p)}" for p in ids)
 
 
 def parse_packet(raw: bytes, token: str, ids=("A", "B", "C", "D", "E")) -> dict | None:
-    """Paquet UDP d'un agent → message, ou None s'il est invalide / d'un autre réseau (mauvais jeton)."""
+    """Agent UDP packet → message, or None if invalid or from another network (wrong token)."""
     try:
         msg = json.loads(raw)
     except ValueError:
@@ -247,12 +247,12 @@ def parse_packet(raw: bytes, token: str, ids=("A", "B", "C", "D", "E")) -> dict 
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="Directeur OBS automatique")
-    ap.add_argument("--config", help="chemin de config.toml")
-    ap.add_argument("--dry-run", action="store_true", help="n'envoie rien à OBS, affiche les décisions")
-    ap.add_argument("--listen-port", type=int, help="remplace [network].director_port")
-    ap.add_argument("-v", "--verbose", action="store_true", help="affiche les scores chaque seconde")
-    ap.add_argument("--log-file", help="écrit aussi le journal dans ce fichier (ex. logs/director.log)")
+    ap = argparse.ArgumentParser(description="Automatic OBS director")
+    ap.add_argument("--config", help="path to config.toml")
+    ap.add_argument("--dry-run", action="store_true", help="send nothing to OBS, print the decisions")
+    ap.add_argument("--listen-port", type=int, help="overrides [network].director_port")
+    ap.add_argument("-v", "--verbose", action="store_true", help="print the scores every second")
+    ap.add_argument("--log-file", help="also write the log to this file (e.g. logs/director.log)")
     args = ap.parse_args(argv)
     logs.setup(args.verbose, args.log_file)
 
@@ -275,7 +275,7 @@ def main(argv=None) -> int:
         if not vision.start():
             vision = None
     director = Director(cfg.switching, scenes, ctl, vision=vision)
-    log.info("Directeur prêt (UDP :%d)%s — %d joueur(s) — scènes : %s", port, " [DRY-RUN]" if args.dry_run else "",
+    log.info("Director ready (UDP :%d)%s, %d player(s), scenes: %s", port, " [DRY-RUN]" if args.dry_run else "",
              len(cfg.players), scenes)
 
     last_status = 0.0
@@ -300,13 +300,13 @@ def main(argv=None) -> int:
             if vision is not None:
                 f = vision.fresh(now)
                 extra = " | vision " + " ".join(
-                    f"{p}:cam={'oui' if d.camera else 'non'},ennemis={len(d.enemies)},proches={vision.near_count(p, now)}"
-                    f"{',approche' if vision.approaching(p, now) else ''}"
+                    f"{p}:cam={'yes' if d.camera else 'no'},enemies={len(d.enemies)},near={vision.near_count(p, now)}"
+                    f"{',approaching' if vision.approaching(p, now) else ''}"
                     for p, d in sorted(f.items()))
                 pairs = vision.together_pairs(now)
                 if pairs:
-                    extra += " ENSEMBLE " + ",".join(f"{p}+{q}" for p, q in pairs)
-            log.debug("état=%s %s%s", director.sw.current, _fmt(live, cfg.player_ids), extra)
+                    extra += " TOGETHER " + ",".join(f"{p}+{q}" for p, q in pairs)
+            log.debug("state=%s %s%s", director.sw.current, _fmt(live, cfg.player_ids), extra)
 
 
 if __name__ == "__main__":

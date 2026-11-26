@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Simulation bout en bout SANS jeu ni OBS : 2 faux serveurs Riot + 2 agents + le directeur en dry-run.
+"""End-to-end simulation WITHOUT the game or OBS: 2 fake Riot servers + 2 agents + the director in dry-run.
 
-    python -m lolauto simulate            # ~66 s, affiche les décisions et vérifie le scénario
+    python -m lolauto simulate            # ~66 s, prints the decisions and checks the scenario
 
-Scénario attendu : B (combat+kill) → A (combat) → B (A est mort) → A (début du combat à deux)
-sans SPLIT (même combat) → SPLIT sur deux combats séparés → retour sur un seul POV.
+Expected scenario: B (fight + kill) → A (fight) → B (A is dead) → A (start of a shared fight)
+with no SPLIT (same fight) → SPLIT on two separate fights → back to a single POV.
 """
 
 from __future__ import annotations
@@ -18,8 +18,8 @@ from lolauto.paths import BASE, cli
 PORT_A, PORT_B, UDP = 12999, 13000, 15005
 DURATION = 66
 EXPECTED = ["POV_B", "POV_A", "POV_B", "POV_A", "SPLIT"]
-# 34-40 s : combat COMMUN (kill d'Alice avec assist de Bob) → pas de SPLIT (split_mode = combats_separes)
-# 50-56 s : deux combats SÉPARÉS → SPLIT
+# 34-40 s: SHARED fight (Alice's kill with Bob's assist) → no SPLIT (split_mode = separate_fights)
+# 50-56 s: two SEPARATE fights → SPLIT
 
 
 def spawn(args, **kw):
@@ -54,14 +54,14 @@ def main(argv=None) -> int:
         for p in procs:
             p.terminate()
 
-    # forme : "SWITCH → B (POV_B) | A=.. B=.." ; on extrait le nom de scène
+    # format: "SWITCH → B (POV_B) | A=.. B=..", extract the scene name
     scenes = [m.group(1).split()[0] for ln in lines if (m := re.search(r"SWITCH → \w+ \(([^)]+)\)", ln))]
-    print("\nSéquence observée :", scenes[:8])
-    # Les processus démarrent dans un ordre variable : on vérifie que la séquence attendue apparaît
-    # DANS L'ORDRE (sous-séquence) et qu'il n'y a qu'un seul SPLIT (pas pendant le combat commun).
+    print("\nObserved sequence:", scenes[:8])
+    # Processes start in a variable order: check that the expected sequence appears IN ORDER
+    # (as a subsequence) and that there is a single SPLIT (none during the shared fight).
     it = iter(scenes)
     ok = all(any(s == e for s in it) for e in EXPECTED) and scenes.count("SPLIT") == 1
-    print("RÉSULTAT :", "OK ✅" if ok else f"ÉCHEC ❌ (attendu {EXPECTED})")
+    print("RESULT:", "OK ✅" if ok else f"FAILED ❌ (expected {EXPECTED})")
     return 0 if ok else 1
 
 

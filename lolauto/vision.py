@@ -1,19 +1,19 @@
-"""Lecture de la minimap (OpenCV) à partir des images de OBS.
+"""Minimap reading (OpenCV) from OBS images.
 
-Pourquoi passer par OBS : le directeur y a déjà accès, et OBS voit les DEUX POV (ta capture de jeu et
-la source NDI du Mac). Pas besoin d'installer quoi que ce soit sur le Mac pour la vision.
+Why go through OBS: the director already talks to it, and OBS sees EVERY POV (the local game capture and
+the teammates' NDI sources). Nothing has to be installed on the player PCs for the vision.
 
-Ce qui est détecté sur chaque minimap :
-- le rectangle blanc de la caméra (= là où le joueur regarde, en pratique autour de son champion) ;
-- les icônes de champions ennemis (anneau rouge) et alliés (anneau bleu).
+What is detected on each minimap:
+- the white camera rectangle (= where the player is looking, in practice around their champion);
+- enemy (red ring) and ally (blue ring) champion icons.
 
-On en tire :
-- un bonus « danger / anticipation » = ennemis proches du rectangle caméra AU-DELÀ du normal de ce
-  joueur (le vis-à-vis de lane ne compte pas), + un bonus quand un ennemi de plus arrive ;
-- « ensemble » = les rectangles caméra de A et de B sont proches → même combat (pour split_mode).
+From that we get:
+- a "danger / anticipation" bonus = enemies near the camera rectangle ABOVE this player's usual count
+  (the lane opponent does not count), plus a bonus when one more enemy arrives;
+- "together" = two players' camera rectangles are close → same fight (for split_mode).
 
-⚠ Les seuils de couleur et de taille sont à CALIBRER sur ta configuration (résolution, taille de minimap) :
-voir `python -m lolauto vision-debug`.
+Colour and size thresholds may need CALIBRATING for your setup (resolution, minimap size):
+see `python -m lolauto vision-debug`.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 
 log = logging.getLogger("vision")
 
-try:  # OpenCV est optionnel : sans lui, la vision est simplement désactivée
+try:  # OpenCV is optional: without it the vision is simply turned off
     import cv2
     import numpy as np
 except ImportError:  # pragma: no cover
@@ -38,61 +38,61 @@ except ImportError:  # pragma: no cover
 @dataclass
 class VisionConfig:
     enabled: bool = True
-    interval: float = 0.25             # secondes entre deux lectures (par joueur)
-    # Zone de la minimap en fractions de l'image [x0, y0, x1, y1] (coin bas-droit par défaut)
+    interval: float = 0.25             # seconds between two reads (per player)
+    # Minimap area as fractions of the image [x0, y0, x1, y1] (bottom-right corner by default)
     minimap: list = field(default_factory=lambda: [0.861, 0.753, 0.994, 0.988])
-    # Couleurs (HSV OpenCV : H 0-180, S/V 0-255)
-    red_h_low: int = 8                 # rouge = H <= red_h_low ou H >= red_h_high
+    # Colours (OpenCV HSV: H 0-180, S/V 0-255)
+    red_h_low: int = 8                 # red = H <= red_h_low or H >= red_h_high
     red_h_high: int = 170
     blue_h: list = field(default_factory=lambda: [95, 125])
     ring_s_min: int = 110
     ring_v_min: int = 110
     white_s_max: int = 45
     white_v_min: int = 200
-    # Icônes de champions : cercles de rayon icon_r_min..icon_r_max (fraction de la largeur de minimap)
+    # Champion icons: circles of radius icon_r_min..icon_r_max (fraction of the minimap width)
     icon_r_min: float = 0.032
     icon_r_max: float = 0.050
-    ring_coverage: float = 0.8         # part du tour du cercle qui doit être de la couleur (rouge/bleu)
-    hough_sensitivity: int = 10        # plus bas = plus de cercles candidats (param2 de HoughCircles)
+    ring_coverage: float = 0.8         # share of the circle that must be red/blue
+    hough_sensitivity: int = 10        # lower = more candidate circles (HoughCircles param2)
     camera_min: float = 0.12
     camera_max: float = 0.55
-    near_radius: float = 0.20          # « proche » = à moins de 20 % de minimap du centre caméra
-    together_dist: float = 0.15        # caméras de A et B à moins de 15 % → même combat
-    w_enemy_near: float = 1.2          # bonus par ennemi proche…
-    max_enemies: int = 5               # …plafonné
-    stale_after: float = 1.5           # une lecture plus vieille est ignorée
-    # Reconnaissance des portraits (champions de la partie, envoyés par l'agent via l'API de LoL)
-    enemy_champions: list = field(default_factory=list)  # forcer la liste (rediff), ex. ["Ahri", "Zed"]
+    near_radius: float = 0.20          # "near" = within 20 % of the minimap from the camera centre
+    together_dist: float = 0.15        # two cameras within 15 % → same fight
+    w_enemy_near: float = 1.2          # bonus per nearby enemy…
+    max_enemies: int = 5               # …capped
+    stale_after: float = 1.5           # older reads are ignored
+    # Portrait recognition (the game's champions, sent by the agent from the LoL API)
+    enemy_champions: list = field(default_factory=list)  # force the list (replays), e.g. ["Ahri", "Zed"]
     portraits_dir: str = "data/portraits"
-    portrait_strong: float = 0.80      # ressemblance suffisante seule…
-    portrait_weak: float = 0.50        # …ou ressemblance moyenne + anneau rouge visible
+    portrait_strong: float = 0.80      # match good enough on its own…
+    portrait_weak: float = 0.50        # …or average match + visible red ring
     portrait_ring: float = 0.45
-    portrait_learn: float = 0.65       # au-delà (et anneau net), le portrait est réappris sur la minimap
-    # Stabilité / anticipation
-    smooth_window: float = 0.75        # on garde le max d'ennemis proches sur cette durée (icônes qui clignotent)
-    w_enemy_approach: float = 0.8      # bonus si des ennemis se rapprochent (anticipation)
+    portrait_learn: float = 0.65       # above this (with a clear ring), the portrait is relearnt from the minimap
+    # Stability / anticipation
+    smooth_window: float = 0.75        # keep the max of nearby enemies over this window (blinking icons)
+    w_enemy_approach: float = 0.8      # bonus when enemies are closing in (anticipation)
     approach_window: float = 1.5
-    # « Normal » de chaque joueur : médiane des ennemis proches sur baseline_window secondes.
-    # En lane, le bot a 2 ennemis en face en permanence, le top 1 : ce n'est pas de l'action.
-    # Seuls les ennemis AU-DELÀ de ce normal comptent (gank, roam, teamfight).
+    # Each player's "usual": median of nearby enemies over baseline_window seconds.
+    # In lane, bot always faces 2 enemies and top faces 1: that is not action.
+    # Only enemies ABOVE that usual count (gank, roam, teamfight).
     baseline_window: float = 60.0
-    black_level: float = 4.0           # image plus sombre = jeu pas affiché (Alt+Tab, chargement) → ignorée
+    black_level: float = 4.0           # darker image = game not shown (Alt+Tab, loading) → ignored
 
     def __post_init__(self):
         if len(self.minimap) != 4 or not (0 <= self.minimap[0] < self.minimap[2] <= 1
                                          and 0 <= self.minimap[1] < self.minimap[3] <= 1):
-            raise ValueError(f"[vision].minimap doit être [x0, y0, x1, y1] entre 0 et 1, pas {self.minimap}")
+            raise ValueError(f"[vision].minimap must be [x0, y0, x1, y1] between 0 and 1, not {self.minimap}")
         if self.interval <= 0:
-            raise ValueError("[vision].interval doit être > 0")
+            raise ValueError("[vision].interval must be > 0")
 
 
 @dataclass
 class Detection:
-    camera: tuple | None               # centre du rectangle caméra (x, y) en fractions de minimap
+    camera: tuple | None               # centre of the camera rectangle (x, y) as minimap fractions
     enemies: list                      # [(x, y), …]
     allies: list
     t: float = 0.0
-    names: list = field(default_factory=list)  # champion reconnu pour chaque ennemi ("" = inconnu)
+    names: list = field(default_factory=list)  # recognised champion for each enemy ("" = unknown)
 
     def nearest_enemy(self) -> float | None:
         if not self.camera or not self.enemies:
@@ -107,14 +107,14 @@ class Detection:
         return sum(math.hypot(x - cx, y - cy) <= radius for x, y in self.enemies)
 
 
-# --------------------------------------------------------------------------- détection pure
+# --------------------------------------------------------------------------- pure detection
 def crop_minimap(frame, roi):
     h, w = frame.shape[:2]
     x0, y0, x1, y1 = roi
     return frame[int(y0 * h):int(y1 * h), int(x0 * w):int(x1 * w)]
 
 
-# Points d'échantillonnage de l'anneau (rayon 1) : 16 secteurs × 4 angles × 4 rayons (0.82r..1.12r)
+# Ring sampling points (radius 1): 16 sectors × 4 angles × 4 radii (0.82r..1.12r)
 if np is not None:
     _ANG = np.radians(np.repeat(np.arange(16), 4) * 22.5 + np.tile([2.8, 8.4, 14.1, 19.7], 16))
     _F = np.repeat([0.82, 0.92, 1.02, 1.12], 64)
@@ -124,9 +124,9 @@ if np is not None:
 
 
 def _ring_coverage(mask, x, y, r):
-    """Part des 16 secteurs angulaires de l'anneau (0.8r..1.15r) où la couleur est présente.
+    """Share of the ring's 16 angular sectors (0.8r..1.15r) where the colour is present.
 
-    Les secteurs qui sortent de l'image (icône coupée par le bord) sont ignorés.
+    Sectors outside the image (icon cut by the edge) are ignored.
     """
     h, w = mask.shape
     xs = np.rint(x + r * _RCOS).astype(int)
@@ -141,7 +141,7 @@ def _ring_coverage(mask, x, y, r):
 
 
 def _best_ring(mask, x, y, radii, step):
-    """Hough donne un centre/rayon approximatifs : on cherche autour la position qui « colle » le mieux."""
+    """Hough gives a rough centre/radius: search around it for the best fit."""
     best = (0.0, x, y, radii[0])
     for dx in (-step, 0.0, step):
         for dy in (-step, 0.0, step):
@@ -153,19 +153,19 @@ def _best_ring(mask, x, y, radii, step):
 
 
 class PortraitBank:
-    """Portraits des champions ennemis, cherchés tels quels sur la minimap (corrélation normalisée).
+    """Enemy champion portraits, searched as is on the minimap (normalised correlation).
 
-    Les portraits viennent de Data Dragon (images officielles Riot). Dès qu'un champion est reconnu
-    avec certitude, son portrait est REMPLACÉ par l'icône vue sur la minimap (rendu exact du jeu) :
-    la reconnaissance s'améliore toute seule au fil de la partie.
+    Portraits come from Data Dragon (official Riot images). Once a champion is recognised
+    with certainty, its portrait is REPLACED by the icon seen on the minimap (the game's exact rendering),
+    so recognition improves on its own during the game.
     """
 
     SCALES = (0.85, 1.0, 1.15)
 
     def __init__(self):
-        self.images: dict[str, object] = {}     # nom → image BGR carrée
+        self.images: dict[str, object] = {}     # name → square BGR image
         self.learned: set[str] = set()
-        self._cache: dict = {}                   # (nom, diamètre) → [(gabarit, masque)]
+        self._cache: dict = {}                   # (name, diameter) → [(template, mask)]
 
     def set(self, name: str, img_bgr, learned: bool = False) -> None:
         self.images[name] = img_bgr
@@ -181,7 +181,7 @@ class PortraitBank:
         if key not in self._cache:
             src = self.images[name]
             if name not in self.learned:
-                # portrait officiel carré : la minimap en montre surtout le centre
+                # square official portrait: the minimap mostly shows its centre
                 hh, ww = src.shape[:2]
                 m = int(min(hh, ww) * 0.08)
                 src = src[m:hh - m, m:ww - m]
@@ -196,7 +196,7 @@ class PortraitBank:
         return self._cache[key]
 
     def match(self, minimap_bgr, diameter: int):
-        """Pour chaque champion : (score, x, y) de la meilleure position."""
+        """For each champion: (score, x, y) of the best position."""
         res = {}
         for name in self.images:
             best = (-1.0, 0.0, 0.0)
@@ -213,7 +213,7 @@ class PortraitBank:
 
 
 def detect(minimap_bgr, cfg: VisionConfig, bank: PortraitBank | None = None) -> Detection:
-    """Analyse une image de minimap (BGR). Coordonnées renvoyées en fractions (0..1)."""
+    """Analyses a minimap image (BGR). Returned coordinates are fractions (0..1)."""
     h, w = minimap_bgr.shape[:2]
     if w == 0 or h == 0:
         return Detection(None, [], [])
@@ -223,8 +223,8 @@ def detect(minimap_bgr, cfg: VisionConfig, bank: PortraitBank | None = None) -> 
     red = vivid & ((H <= cfg.red_h_low) | (H >= cfg.red_h_high))
     blue = vivid & (H >= cfg.blue_h[0]) & (H <= cfg.blue_h[1])
 
-    # Icônes de champions = cercles (portrait) entourés d'un anneau rouge (ennemi) ou bleu (allié).
-    # Les tourelles (boucliers) et les sbires (petits points) ne sont pas des cercles de cette taille.
+    # Champion icons = circles (portrait) inside a red (enemy) or blue (ally) ring.
+    # Turrets (shields) and minions (small dots) are not circles of that size.
     gray = cv2.medianBlur(cv2.cvtColor(minimap_bgr, cv2.COLOR_BGR2GRAY), 3)
     circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, dp=1, minDist=max(4, int(0.05 * w)), param1=80,
                                param2=cfg.hough_sensitivity, minRadius=max(3, int(cfg.icon_r_min * w)),
@@ -234,9 +234,9 @@ def detect(minimap_bgr, cfg: VisionConfig, bank: PortraitBank | None = None) -> 
         rmin, rmax = cfg.icon_r_min * w, cfg.icon_r_max * w
         radii = [rmin + (rmax - rmin) * f for f in (0.2, 0.45, 0.7, 0.95)]
         step = max(1.0, 0.006 * w)
-        found = []   # (couverture, x, y, camp)
+        found = []   # (coverage, x, y, side)
         for x, y, r0 in circles[0]:
-            # tri rapide : sans un minimum de rouge/bleu autour, inutile d'affiner
+            # quick filter: without some red/blue around, no need to refine
             quick_r = _ring_coverage(red, float(x), float(y), float(r0))
             quick_b = _ring_coverage(blue, float(x), float(y), float(r0))
             if max(quick_r, quick_b) < 0.25:
@@ -247,7 +247,7 @@ def detect(minimap_bgr, cfg: VisionConfig, bank: PortraitBank | None = None) -> 
                 found.append((cr, rx, ry, "E"))
             elif cb >= cfg.ring_coverage:
                 found.append((cb, bx, by, "A"))
-        # plusieurs candidats Hough pour la même icône : on garde le meilleur (suppression des doublons)
+        # several Hough candidates for one icon: keep the best (duplicate removal)
         found.sort(reverse=True)
         kept = []
         for c, x, y, side in found:
@@ -257,10 +257,10 @@ def detect(minimap_bgr, cfg: VisionConfig, bank: PortraitBank | None = None) -> 
         allies = [(x / w, y / h) for _, x, y, side in kept if side == "A"]
     names = [""] * len(enemies)
 
-    # Reconnaissance des portraits : retrouve aussi les icônes à moitié cachées, et dit QUI est où.
+    # Portrait recognition: also finds half-hidden icons, and tells WHO is where.
     if bank is not None and len(bank):
         rmid = (cfg.icon_r_min + cfg.icon_r_max) / 2 * w
-        diameter = int(round(2 * rmid * 0.8))           # portrait = intérieur de l'anneau
+        diameter = int(round(2 * rmid * 0.8))           # portrait = inside of the ring
         hits = []
         for name, (score, x, y) in bank.match(minimap_bgr, diameter).items():
             ring = _best_ring(red, x, y, [rmid * 0.9, rmid, rmid * 1.1], max(1.0, 0.006 * w))[0]
@@ -272,12 +272,12 @@ def detect(minimap_bgr, cfg: VisionConfig, bank: PortraitBank | None = None) -> 
             if all(math.hypot(x - ax, y - ay) > rmid * 1.1 for _, _, ax, ay, _ in accepted):
                 accepted.append((score, ring, x, y, name))
         merged_e, merged_n = [(x, y) for _, _, x, y, _ in accepted], [n for *_, n in accepted]
-        for (x, y) in enemies:            # anneaux rouges non reconnus : gardés (champion inconnu)
+        for (x, y) in enemies:            # unrecognised red rings: kept (unknown champion)
             if all(math.hypot(x - ax, y - ay) > rmid * 1.2 for ax, ay in merged_e):
                 merged_e.append((x, y))
                 merged_n.append("")
         enemies, names = merged_e[:cfg.max_enemies], merged_n[:cfg.max_enemies]
-        # apprentissage : l'icône réelle remplace le portrait officiel
+        # learning: the real icon replaces the official portrait
         for score, ring, x, y, name in accepted:
             if score >= cfg.portrait_learn and ring >= cfg.ring_coverage and name not in bank.learned:
                 rr = int(round(rmid * 0.8))
@@ -294,7 +294,7 @@ def detect(minimap_bgr, cfg: VisionConfig, bank: PortraitBank | None = None) -> 
         if not (cfg.camera_min * w <= bw <= cfg.camera_max * w and cfg.camera_min * h <= bh <= cfg.camera_max * h):
             continue
         fill = cv2.countNonZero(white[y:y + bh, x:x + bw]) / float(bw * bh)
-        if fill > 0.5:          # un rectangle de caméra est un CONTOUR fin, pas une tache pleine
+        if fill > 0.5:          # a camera rectangle is a thin OUTLINE, not a filled blob
             continue
         if best is None or bw * bh > best[2] * best[3]:
             best = (x, y, bw, bh)
@@ -303,7 +303,7 @@ def detect(minimap_bgr, cfg: VisionConfig, bank: PortraitBank | None = None) -> 
 
 
 def annotate(minimap_bgr, det: Detection, cfg: VisionConfig):
-    """Image de debug : rectangle caméra (vert), ennemis (rouge), alliés (bleu), rayon « proche »."""
+    """Debug image: camera rectangle (green), enemies (red), allies (blue), "near" radius."""
     img = minimap_bgr.copy()
     h, w = img.shape[:2]
     if det.camera:
@@ -323,31 +323,31 @@ def annotate(minimap_bgr, det: Detection, cfg: VisionConfig):
 
 
 def decode_obs_image(data: str):
-    """OBS renvoie 'data:image/jpg;base64,…'."""
+    """OBS returns 'data:image/jpg;base64,…'."""
     raw = base64.b64decode(data.split(",", 1)[1] if "," in data else data)
     return cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
 
 
-# --------------------------------------------------------------------------- moteur (thread)
+# --------------------------------------------------------------------------- engine (thread)
 class VisionRunner:
-    """Lit régulièrement les sources OBS dans un thread et garde un petit historique par joueur.
+    """Reads the OBS sources regularly in a thread and keeps a short history per player.
 
-    Le score n'utilise pas une seule image : on prend le MAX d'ennemis proches sur `smooth_window`
-    (une icône qui clignote ou passe sous une autre ne fait pas retomber le score), plus un bonus
-    quand les ennemis se RAPPROCHENT (anticipation du combat).
+    The score does not rely on a single image: it takes the MAX of nearby enemies over `smooth_window`
+    (an icon that blinks or passes under another does not drop the score), plus a bonus
+    when enemies are CLOSING IN (fight anticipation).
     """
 
     def __init__(self, cfg: VisionConfig, obs_args: dict | None = None, players=()):
-        """players : liste de PlayerConfig (source OBS, résolution, minimap propre à chaque joueur)."""
+        """players: list of PlayerConfig (OBS source, resolution, each player's own minimap)."""
         self.cfg = cfg
         self.obs_args = obs_args or {}
         self.players = {p.id: p for p in players if p.vision_source}
         self.sources = {pid: p.vision_source for pid, p in self.players.items()}
         self.bank = PortraitBank()
         self.enemy_ids: list[str] = []
-        self._portraits_tried = float("-inf")   # dernier essai de téléchargement (relance toutes les 60 s)
+        self._portraits_tried = float("-inf")   # last download attempt (retried every 60 s)
         self.latest: dict[str, Detection] = {}
-        self.history: dict[str, list] = {}     # pid → [(t, nb_proches, distance_min)]
+        self.history: dict[str, list] = {}     # pid → [(t, near_count, min_distance)]
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = None
@@ -358,12 +358,12 @@ class VisionRunner:
     def available() -> bool:
         return cv2 is not None
 
-    # ------------------------------------------------------------------ champions de la partie
+    # ------------------------------------------------------------------ the game's champions
     def set_enemies(self, ids: list, blocking: bool = False) -> None:
-        """Appelé par le directeur avec les champions adverses (envoyés par l'agent, ~3 fois/s).
+        """Called by the director with the enemy champions (sent by the agent, ~3 times/s).
 
-        Ne relance le téléchargement que si la liste change, ou toutes les 60 s s'il a échoué
-        (Data Dragon injoignable) — jamais à chaque paquet.
+        Downloads again only when the list changes, or every 60 s after a failure
+        (Data Dragon unreachable), never on every packet.
         """
         from .portraits import valid_ids
 
@@ -376,7 +376,7 @@ class VisionRunner:
             return
         self.enemy_ids, self._portraits_tried = ids, now
         if not same_list:
-            log.info("Champions adverses : %s", ", ".join(ids))
+            log.info("Enemy champions: %s", ", ".join(ids))
 
         def load():
             from .portraits import ensure_portraits
@@ -395,9 +395,9 @@ class VisionRunner:
         else:
             threading.Thread(target=load, daemon=True, name="portraits").start()
 
-    # ------------------------------------------------------------------ traitement d'une image
+    # ------------------------------------------------------------------ processing one image
     def process(self, pid: str, frame, now: float) -> Detection | None:
-        """Analyse une image complète du jeu. Renvoie None si l'image est noire (jeu pas affiché)."""
+        """Analyses a full game image. Returns None if the image is black (game not shown)."""
         if frame is None or float(frame.mean()) < self.cfg.black_level:
             return None
         with self._lock:
@@ -420,11 +420,11 @@ class VisionRunner:
         if not self.cfg.enabled or not self.sources:
             return False
         if not self.available():
-            log.warning("Vision désactivée : OpenCV absent (pip install opencv-python numpy)")
+            log.warning("Vision off: OpenCV missing (pip install opencv-python numpy)")
             return False
         self._thread = threading.Thread(target=self._run, daemon=True, name="vision")
         self._thread.start()
-        log.info("Vision minimap active sur %s", self.sources)
+        log.info("Minimap vision active on %s", self.sources)
         return True
 
     def stop(self) -> None:
@@ -441,13 +441,13 @@ class VisionRunner:
                     cl = obs.ReqClient(**self.obs_args)
                 self.grab_once(cl)
             except Exception as e:
-                log.warning("Vision : connexion OBS perdue (%s)", e)
+                log.warning("Vision: lost connection to OBS (%s)", e)
                 cl = None
                 time.sleep(2)
             time.sleep(max(0.0, self.cfg.interval - (time.monotonic() - t0)))
 
     def grab_once(self, cl) -> None:
-        """Une lecture de chaque source OBS (cl = client obs-websocket)."""
+        """One read of each OBS source (cl = obs-websocket client)."""
         warned = getattr(self, "_warned", set())
         self._warned = warned
         for pid, name in self.sources.items():
@@ -456,39 +456,39 @@ class VisionRunner:
                 r = cl.get_source_screenshot(name, "jpg", p.width, p.height, 85)
             except Exception as e:
                 if name not in warned:
-                    log.warning("Vision : source OBS %r illisible (%s)", name, e)
+                    log.warning("Vision: cannot read OBS source %r (%s)", name, e)
                     warned.add(name)
                 continue
             self.process(pid, decode_obs_image(r.image_data), time.monotonic())
 
-    # ------------------------------------------------------------------ lecture par le directeur
+    # ------------------------------------------------------------------ read by the director
     def fresh(self, now: float) -> dict[str, Detection]:
         with self._lock:
             return {p: d for p, d in self.latest.items() if now - d.t <= self.cfg.stale_after}
 
     def near_count(self, pid: str, now: float) -> int:
-        """Max d'ennemis proches sur la fenêtre de lissage (0 si pas de lecture récente)."""
+        """Max of nearby enemies over the smoothing window (0 without a recent read)."""
         with self._lock:
             h = [e for e in self.history.get(pid, []) if now - e[0] <= self.cfg.smooth_window and e[1] is not None]
         return max((e[1] for e in h), default=0)
 
     def baseline(self, pid: str, now: float) -> float:
-        """Nombre d'ennemis proches « habituel » pour ce joueur (médiane sur baseline_window)."""
+        """This player's "usual" number of nearby enemies (median over baseline_window)."""
         with self._lock:
             vals = sorted(e[1] for e in self.history.get(pid, [])
                           if now - e[0] <= self.cfg.baseline_window and e[1] is not None)
-        if len(vals) < 8:          # pas encore assez d'historique : on ne suppose rien
+        if len(vals) < 8:          # not enough history yet: assume nothing
             return 0.0
         return float(vals[len(vals) // 2])
 
     def extra_near(self, pid: str, now: float) -> float:
-        """Ennemis proches EN PLUS de l'habituel (≥ 0)."""
+        """Nearby enemies ABOVE the usual count (≥ 0)."""
         return max(0.0, self.near_count(pid, now) - self.baseline(pid, now))
 
     def approaching(self, pid: str, now: float) -> bool:
-        """Un ennemi de PLUS arrive près du joueur, au-delà de son habituel (gank, roam, engage).
+        """One MORE enemy is coming near the player, above their usual count (gank, roam, engage).
 
-        Les va-et-vient du vis-à-vis de lane ne comptent pas : il faut dépasser le « normal ».
+        The lane opponent moving back and forth does not count: the usual count must be exceeded.
         """
         with self._lock:
             h = [e for e in self.history.get(pid, []) if now - e[0] <= self.cfg.approach_window]
@@ -506,7 +506,7 @@ class VisionRunner:
         return b
 
     def together_pairs(self, now: float) -> list[tuple[str, str]]:
-        """Paires de joueurs dont les caméras sont au même endroit sur la carte (même combat)."""
+        """Pairs of players whose cameras are in the same place on the map (same fight)."""
         f = {p: d for p, d in self.fresh(now).items() if d.camera}
         ids = sorted(f)
         out = []

@@ -1,12 +1,11 @@
-"""Calcul du « score d'intérêt » d'un joueur à partir de l'API locale de League of Legends.
+"""Computes a player's "interest score" from League of Legends' local API.
 
-Ce module est volontairement pur (aucun réseau, aucune horloge interne) : l'heure `now`
-est passée par l'appelant, ce qui le rend trivial à tester.
+This module is deliberately pure (no network, no internal clock): the time `now` is passed in
+by the caller, which makes it trivial to test.
 
-Ce que l'API locale (Live Client Data) donne VRAIMENT : sa propre vie, son état mort/vivant,
-son rôle, la liste des événements de la partie (kills, objectifs…) et le temps de jeu.
-Elle ne donne PAS de coordonnées : le score se base donc sur l'intensité d'un combat
-(vie qui chute), les événements, le rôle et des fenêtres d'objectifs configurables.
+What the local Live Client Data API REALLY gives: your own health, dead/alive state, role, the
+game's event list (kills, objectives…) and the game time. It gives NO coordinates, so the score
+relies on fight intensity (health dropping), events, role and configurable objective windows.
 """
 
 from __future__ import annotations
@@ -28,16 +27,16 @@ DEFAULT_EVENTS = {
 
 @dataclass
 class ScoringConfig:
-    window: float = 3.0            # fenêtre (s) sur laquelle on mesure la vie perdue
-    w_hp_drop: float = 4.0         # poids de la vie perdue récemment (0..1 de vie max)
-    w_low_hp: float = 1.5          # poids de « je suis bas en vie »
-    dead_score: float = -1.0       # score d'un joueur mort (pour céder la caméra à l'autre)
-    death_bonus: float = 4.0       # on laisse voir la mort quelques secondes…
-    death_duration: float = 3.0    # …pendant cette durée
-    event_duration: float = 6.0    # durée de décroissance du bonus d'un événement
-    objective_lead: float = 30.0   # fenêtre d'objectif : secondes AVANT l'apparition
-    objective_after: float = 45.0  # …et secondes APRÈS
-    shared_window: float = 10.0    # durée pendant laquelle un événement compte pour « même combat »
+    window: float = 3.0            # window (s) over which health loss is measured
+    w_hp_drop: float = 4.0         # weight of recent health loss (0..1 of max health)
+    w_low_hp: float = 1.5          # weight of "I am low on health"
+    dead_score: float = -1.0       # score of a dead player (hands the camera to someone else)
+    death_bonus: float = 4.0       # the death stays on screen a few seconds…
+    death_duration: float = 3.0    # …for this long
+    event_duration: float = 6.0    # fade-out time of an event bonus
+    objective_lead: float = 30.0   # objective window: seconds BEFORE it spawns
+    objective_after: float = 45.0  # …and seconds AFTER
+    shared_window: float = 10.0    # how long an event counts towards "same fight"
     role_bias: dict = field(default_factory=lambda: {"JUNGLE": 0.4, "UTILITY": 0.1})
     events: dict = field(default_factory=lambda: dict(DEFAULT_EVENTS))
     objectives: list = field(default_factory=list)
@@ -46,17 +45,17 @@ class ScoringConfig:
 @dataclass
 class Result:
     score: float
-    dead: bool           # mort en ce moment
-    settled_dead: bool   # mort ET la « minute de gloire » de la mort est passée
+    dead: bool           # dead right now
+    settled_dead: bool   # dead AND the death's moment on screen is over
     hp_ratio: float
     role: str
     game_time: float
     parts: dict
-    recent_events: list = field(default_factory=list)  # EventID récents où je suis impliqué
+    recent_events: list = field(default_factory=list)  # recent EventIDs I took part in
 
 
 def short(name: str | None) -> str:
-    """'Pseudo#EUW' -> 'pseudo' (les événements n'incluent pas toujours le tag)."""
+    """'Name#EUW' -> 'name' (events do not always include the tag)."""
     return (name or "").split("#", 1)[0].strip().casefold()
 
 
@@ -72,13 +71,13 @@ class Scorer:
 
     def reset(self) -> None:
         self._hist: deque = deque()
-        self._seen: int | None = None   # nb d'événements déjà traités (None = 1er poll)
-        self._bonuses: list = []        # (kind, valeur, t0, durée)
+        self._seen: int | None = None   # number of events already handled (None = first poll)
+        self._bonuses: list = []        # (kind, value, t0, duration)
         self._death_t: float | None = None
         self._last_game_time = 0.0
-        self._involved: list = []       # (EventID, t) où je suis tueur/assist/victime
+        self._involved: list = []       # (EventID, t) where I am killer/assist/victim
 
-    # ------------------------------------------------------------------ événements
+    # ------------------------------------------------------------------ events
     def _on_event(self, ev: dict, me: str, now: float) -> None:
         name = ev.get("EventName")
         people = [ev.get("KillerName"), ev.get("VictimName"), ev.get("Recipient"), *(ev.get("Assisters") or [])]
@@ -94,29 +93,29 @@ class Scorer:
         if any(same(a, me) for a in actors):
             self._bonuses.append(("event", float(value), now, self.cfg.event_duration))
 
-    # ------------------------------------------------------------------ calcul
+    # ------------------------------------------------------------------ computation
     def update(self, data: dict, me: str, now: float) -> Result | None:
         cfg = self.cfg
         stats = (data.get("activePlayer") or {}).get("championStats")
         if not stats:
-            return None  # spectateur / replay / chargement : pas de joueur actif
+            return None  # spectator / replay / loading: no active player
 
         game_time = float((data.get("gameData") or {}).get("gameTime", 0.0))
         events = (data.get("events") or {}).get("Events", []) or []
 
-        # nouvelle partie détectée (liste d'événements plus courte ou temps qui recule)
+        # new game detected (shorter event list or game time going back)
         if (self._seen is not None and len(events) < self._seen) or game_time + 5 < self._last_game_time:
             self.reset()
         self._last_game_time = game_time
 
         if self._seen is None:
-            self._seen = len(events)  # on ignore l'historique si on démarre en cours de partie
+            self._seen = len(events)  # ignore past events when starting mid-game
         else:
             for ev in events[self._seen:]:
                 self._on_event(ev, me, now)
             self._seen = len(events)
 
-        # vie
+        # health
         cur, mx = float(stats.get("currentHealth", 0.0)), float(stats.get("maxHealth", 0.0))
         ratio = max(0.0, min(1.0, cur / mx)) if mx > 0 else 1.0
         self._hist.append((now, ratio))
@@ -124,7 +123,7 @@ class Scorer:
             self._hist.popleft()
         drop = max(0.0, max(r for _, r in self._hist) - ratio)
 
-        # état mort/vivant + rôle
+        # dead/alive state + role
         dead, role = False, ""
         for p in data.get("allPlayers", []) or []:
             names = (p.get("riotIdGameName"), p.get("summonerName"), p.get("riotId"))
@@ -135,7 +134,7 @@ class Scorer:
         if not dead:
             self._death_t = None
 
-        # bonus qui décroissent linéairement
+        # bonuses fading out linearly
         event_part = death_part = 0.0
         alive_bonuses = []
         for kind, val, t0, dur in self._bonuses:

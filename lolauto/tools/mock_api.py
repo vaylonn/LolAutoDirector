@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Faux serveur « Live Client Data » pour tester TOUT le pipeline sans lancer le jeu.
+"""Fake Live Client Data server to test the WHOLE pipeline without running the game.
 
     python -m lolauto mock --who A --port 12999
     python -m lolauto mock --who B --port 13000
 
-Il rejoue un scénario de ~60 s (combats, kills, mort, combat commun, puis deux combats séparés) au format de l'API réelle.
-Avec `--loop 75`, le scénario recommence toutes les 75 s (faux coéquipier « vivant » pendant une vraie partie) ;
-le temps de jeu annoncé reste alors entre 60 et 60+N s, hors des fenêtres d'objectifs de config.toml.
-Utilise ensuite `--api-url http://127.0.0.1:12999` côté agent (voir `python -m lolauto simulate`).
+It replays a ~60 s scenario (fights, kills, a death, a shared fight, then two separate fights) in the real API format.
+With `--loop 75`, the scenario restarts every 75 s (a fake teammate kept "alive" during a real game); the
+reported game time then stays between 60 and 60+N s, outside config.toml's objective windows.
+Then point the agent at it with `--api-url http://127.0.0.1:12999` (see `python -m lolauto simulate`).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PLAYERS = {"A": ("Alice", "MIDDLE"), "B": ("Bob", "JUNGLE")}
 MAX_HP = 2000.0
 
-# (temps, ratio de vie) — interpolation linéaire
+# (time, health ratio), linear interpolation
 HP = {
     "A": [(0, 1), (17, 1), (21, 0.2), (21.01, 0), (33, 0), (33.01, 1), (34, 1), (37, 0.35), (38, 0.3), (42, 1), (50, 1), (52, 0.55), (54, 0.3), (56, 0.15), (58, 0.15), (62, 1), (70, 1)],
     "B": [(0, 1), (6, 1), (9, 0.35), (14, 1), (34, 1), (37, 0.4), (40, 1), (50, 1), (52, 0.6), (54, 0.35), (56, 0.2), (58, 0.2), (62, 1), (70, 1)],
@@ -32,7 +32,7 @@ EVENTS = [
     (9.0, {"EventName": "ChampionKill", "KillerName": "Bob", "VictimName": "Enemy1", "Assisters": []}),
     (21.0, {"EventName": "ChampionKill", "KillerName": "Enemy2", "VictimName": "Alice", "Assisters": []}),
     (38.0, {"EventName": "ChampionKill", "KillerName": "Alice", "VictimName": "Enemy3", "Assisters": ["Bob"]}),
-    # deux combats SÉPARÉS : chacun son kill, personne en commun
+    # two SEPARATE fights: one kill each, nobody in common
     (53.0, {"EventName": "ChampionKill", "KillerName": "Alice", "VictimName": "Enemy4", "Assisters": []}),
     (53.5, {"EventName": "ChampionKill", "KillerName": "Bob", "VictimName": "Enemy5", "Assisters": []}),
 ]
@@ -69,7 +69,7 @@ def snapshot(who: str, t: float, game_time: float | None = None) -> dict:
 
 
 def scenario_time(elapsed: float, speed: float, loop: float) -> tuple[float, float]:
-    """(temps dans le scénario, temps de jeu annoncé)."""
+    """(scenario time, reported game time)."""
     t = elapsed * speed
     if loop > 0:
         ts = t % loop
@@ -106,11 +106,11 @@ def main(argv=None) -> None:
     ap.add_argument("--who", choices=["A", "B"], required=True)
     ap.add_argument("--port", type=int, default=2999)
     ap.add_argument("--speed", type=float, default=1.0)
-    ap.add_argument("--loop", type=float, default=0.0, help="rejoue le scénario toutes les N secondes (0 = une fois)")
+    ap.add_argument("--loop", type=float, default=0.0, help="replay the scenario every N seconds (0 = once)")
     a = ap.parse_args(argv)
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(a.who, a.speed, time.monotonic(), a.loop))
-    loop = f", boucle toutes les {a.loop:.0f} s" if a.loop > 0 else ""
-    print(f"mock API {a.who} sur http://127.0.0.1:{a.port}{loop}", flush=True)
+    loop = f", looping every {a.loop:.0f} s" if a.loop > 0 else ""
+    print(f"mock API {a.who} on http://127.0.0.1:{a.port}{loop}", flush=True)
     srv.serve_forever()
 
 

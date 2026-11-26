@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Calibration de la vision minimap.
+"""Minimap vision calibration.
 
-    python -m lolauto vision-debug                    # 10 captures des sources de config.toml, 1 par seconde
+    python -m lolauto vision-debug                    # 10 captures of config.toml's sources, 1 per second
     python -m lolauto vision-debug --count 30 --every 0.5
-    python -m lolauto vision-debug --image capture.png   # analyse une image déjà enregistrée
-    python -m lolauto vision-debug --champions Ahri,Zed,Jinx,Leona,Darius   # forcer les champions adverses
+    python -m lolauto vision-debug --image capture.png   # analyse an image already saved
+    python -m lolauto vision-debug --champions Ahri,Zed,Jinx,Leona,Darius   # force the enemy champions
 
-Les champions adverses sont lus automatiquement dans l'API du jeu (partie OU rediff) : leurs
-portraits officiels sont téléchargés dans data/portraits/ et reconnus sur la minimap.
+Enemy champions are read automatically from the game API (live game OR replay): their official
+portraits are downloaded to data/portraits/ and recognised on the minimap.
 
-Écrit dans logs/vision/ : l'image complète, la minimap découpée, et la minimap annotée
-(vert = caméra + rayon « proche », rouge = ennemis détectés, bleu = alliés), plus vision.txt.
-Si la zone découpée n'est pas exactement la minimap, ajuste [vision].minimap dans config.toml.
+Writes to logs/vision/: the full image, the cropped minimap and the annotated minimap
+(green = camera + "near" radius, red = detected enemies, blue = allies), plus vision.txt.
+If the cropped area is not exactly the minimap, adjust [vision].minimap in config.toml.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ OUT = BASE / "logs" / "vision"
 
 
 def game_enemies(cfg, me_arg):
-    """Champions adverses depuis l'API locale (marche aussi en rediff, sans joueur actif)."""
+    """Enemy champions from the local API (also works in replays, without an active player)."""
     try:
         api = RiotClient(cfg.riot.api_url, 2.0)
         data = api.all_game_data()
@@ -50,7 +50,7 @@ def game_enemies(cfg, me_arg):
             me = None
     if me:
         return enemy_ids(players, me, same)
-    # rediff sans pseudo : on prend l'équipe rouge (CHAOS) comme adversaire
+    # replay without a player name: take the red team (CHAOS) as the enemy
     from lolauto.portraits import champion_id
     return [champion_id(p) for p in players if p.get("team") == "CHAOS"]
 
@@ -61,19 +61,19 @@ def analyse(runner, pid, frame, cfg, tag, report):
     det = runner.process(pid, frame, time.monotonic())
     cv2.imwrite(str(OUT / f"{tag}_full.jpg"), frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
     if det is None:
-        line = f"{tag}: image NOIRE (jeu pas au premier plan ?) — ignorée"
+        line = f"{tag}: BLACK image (game not in focus?), ignored"
         print(line, flush=True)
         report.append(line)
         return
     cv2.imwrite(str(OUT / f"{tag}_mini.png"), mini)
     big = cv2.resize(annotate(mini, det, cfg.vision), None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)
     cv2.imwrite(str(OUT / f"{tag}_annot.png"), big)
-    cam = f"({det.camera[0]:.2f},{det.camera[1]:.2f})" if det.camera else "NON TROUVÉE"
+    cam = f"({det.camera[0]:.2f},{det.camera[1]:.2f})" if det.camera else "NOT FOUND"
     named = ", ".join(n for n in det.names if n) or "-"
     line = (f"{tag}: image {frame.shape[1]}x{frame.shape[0]}, minimap {mini.shape[1]}x{mini.shape[0]} | "
-            f"caméra {cam} | ennemis {len(det.enemies)} (proches {det.enemies_near(cfg.vision.near_radius)}, "
-            f"lissé {runner.near_count(pid, det.t)}{', approche' if runner.approaching(pid, det.t) else ''}) "
-            f"| reconnus : {named} | alliés {len(det.allies)}")
+            f"camera {cam} | enemies {len(det.enemies)} (near {det.enemies_near(cfg.vision.near_radius)}, "
+            f"smoothed {runner.near_count(pid, det.t)}{', approaching' if runner.approaching(pid, det.t) else ''}) "
+            f"| recognised: {named} | allies {len(det.allies)}")
     print(line, flush=True)
     report.append(line)
 
@@ -82,12 +82,12 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--count", type=int, default=10)
     ap.add_argument("--every", type=float, default=1.0)
-    ap.add_argument("--image", help="analyser un fichier image au lieu d'OBS")
-    ap.add_argument("--source", help="nom d'une source OBS (sinon celles des [[players]])")
-    ap.add_argument("--width", type=int, default=1920, help="avec --source : résolution du jeu")
+    ap.add_argument("--image", help="analyse an image file instead of OBS")
+    ap.add_argument("--source", help="name of an OBS source (otherwise the [[players]] ones)")
+    ap.add_argument("--width", type=int, default=1920, help="with --source: game resolution")
     ap.add_argument("--height", type=int, default=1080)
-    ap.add_argument("--champions", help="champions adverses, séparés par des virgules (sinon API du jeu)")
-    ap.add_argument("--me", help="ton pseudo (rediff : pour savoir quelle équipe est adverse)")
+    ap.add_argument("--champions", help="enemy champions, comma-separated (otherwise from the game API)")
+    ap.add_argument("--me", help="your player name (replays: tells which team is the enemy)")
     args = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -103,15 +103,15 @@ def main(argv=None) -> int:
               else list(cfg.vision.enemy_champions) or game_enemies(cfg, args.me))
     if champs:
         runner.set_enemies(champs, blocking=True)
-        print(f"Champions adverses : {', '.join(champs)} | portraits chargés : {len(runner.bank)}", flush=True)
-        report.append(f"champions : {champs}, portraits {len(runner.bank)}")
+        print(f"Enemy champions: {', '.join(champs)} | portraits loaded: {len(runner.bank)}", flush=True)
+        report.append(f"champions: {champs}, portraits {len(runner.bank)}")
     else:
-        print("Champions adverses inconnus : détection par anneau rouge seulement", flush=True)
+        print("Enemy champions unknown: red-ring detection only", flush=True)
 
     if args.image:
         frame = cv2.imread(args.image)
         if frame is None:
-            print("Image illisible :", args.image)
+            print("Cannot read image:", args.image)
             return 1
         analyse(runner, "X", frame, cfg, Path(args.image).stem, report)
     else:
@@ -119,7 +119,7 @@ def main(argv=None) -> int:
 
         cl = obs.ReqClient(host=cfg.obs.host, port=cfg.obs.port, password=cfg.obs.password, timeout=5)
         if not runner.players:
-            print("Aucune source : renseigne vision_source dans les [[players]] de config.toml")
+            print("No source: set vision_source in config.toml's [[players]]")
             return 1
         for i in range(args.count):
             for pid, p in runner.players.items():
@@ -127,15 +127,15 @@ def main(argv=None) -> int:
                 try:
                     r = cl.get_source_screenshot(name, "jpg", p.width, p.height, 90)
                 except Exception as e:
-                    print(f"{pid}: source {name!r} illisible ({e})")
+                    print(f"{pid}: cannot read source {name!r} ({e})")
                     continue
                 analyse(runner, pid, decode_obs_image(r.image_data), cfg, f"{pid}_{i:02d}", report)
             time.sleep(args.every)
     if runner.bank.learned:
-        report.append(f"portraits réappris sur la minimap : {sorted(runner.bank.learned)}")
-        print("Portraits réappris sur la minimap :", ", ".join(sorted(runner.bank.learned)))
+        report.append(f"portraits relearnt from the minimap: {sorted(runner.bank.learned)}")
+        print("Portraits relearnt from the minimap:", ", ".join(sorted(runner.bank.learned)))
     (OUT / "vision.txt").write_text("\n".join(report), encoding="utf-8")
-    print(f"\nImages dans {OUT}")
+    print(f"\nImages in {OUT}")
     return 0
 
 
