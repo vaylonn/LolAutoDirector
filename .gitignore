@@ -1,0 +1,15 @@
+# Python / build
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+*.exe
+
+# Local files (personal settings, never commit them)
+config.toml
+ce_pc.json
+joueur.txt
+logs/
+data/
