@@ -1,7 +1,10 @@
 name: Release
 
-# Builds LoLAutoDirector.exe. Push a tag like v1.0.0 to publish it as a GitHub release.
+# Builds LoLAutoDirector.exe and attaches it to the GitHub release.
+# Publish a release (or push a tag like v1.0.0) to trigger it.
 on:
+  release:
+    types: [published]
   push:
     tags: ["v*"]
   workflow_dispatch:
