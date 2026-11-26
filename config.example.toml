@@ -1,0 +1,131 @@
+# =====================================================================
+#  LoL Auto Director — configuration (the SAME file on every PC)
+#  The app writes config.toml for you. This file is a commented example; copy it to config.toml to edit by hand.
+# =====================================================================
+
+
+[network]
+director_host = "192.168.1.10"           # local IP of the streaming PC (OBS + director): agents send their score there
+director_port = 5005                     # UDP port (allow it in the streaming PC's firewall)
+token = "change-me"                      # same value on every PC: the director ignores other packets
+
+[riot]
+api_url = "https://127.0.0.1:2999"       # local LoL client API (only changed by the simulator)
+poll_interval = 0.3                      # seconds between two reads
+timeout = 1.0
+
+[obs]
+host = "127.0.0.1"
+port = 4455
+password = "OBS_PASSWORD"                # OBS > Tools > WebSocket Server Settings
+scene_split = "SPLIT"                    # split-screen scene; "" to disable
+
+# One block per player / gaming PC (2 to 5).
+[[players]]
+id = "A"                                 # A to E; the streaming PC is usually A
+name = "Player A"
+scene = "POV_A"                          # OBS scene of this player's POV
+vision_source = "Jeu A"                  # OBS source read by the vision (game capture or NDI); "" = no vision
+width = 1920                             # this player's game resolution
+height = 1080
+minimap = []                             # minimap area for this player ([] = the one in [vision])
+
+[[players]]
+id = "B"                                 # A to E; the streaming PC is usually A
+name = "Player B"
+scene = "POV_B"                          # OBS scene of this player's POV
+vision_source = ""                       # OBS source read by the vision (game capture or NDI); "" = no vision
+width = 1920                             # this player's game resolution
+height = 1080
+minimap = []                             # minimap area for this player ([] = the one in [vision])
+
+
+[switching]
+min_hold = 5.0                           # minimum time on a POV before a normal switch (s)
+margin = 1.0                             # score lead needed for a normal switch
+fast_min_hold = 2.0                      # urgent switch allowed after N s…
+fast_margin = 5.0                        # …if the other player leads by at least this much
+stale_after = 3.0                        # agent silent for N s = ignored
+split_enabled = true
+split_threshold = 3.0                    # BOTH scores above this threshold…
+split_enter_after = 1.5                  # …for N s → SPLIT
+split_exit_below = 1.5                   # leave SPLIT when the lower score drops below this…
+split_min_hold = 6.0                     # …and SPLIT has been shown for N s
+manual_pause = 20.0                      # manual scene change → automation pauses for N s
+split_mode = "combats_separes"           # "combats_separes" (SPLIT only for separate fights) or "toujours" (always)
+
+[scoring]
+window = 3.0
+w_hp_drop = 4.0
+w_low_hp = 1.5
+dead_score = -1.0
+death_bonus = 4.0
+death_duration = 3.0
+event_duration = 6.0
+objective_lead = 30.0
+objective_after = 45.0
+shared_window = 10.0
+
+# Small base bonus by role.
+[scoring.role_bias]
+JUNGLE = 0.4
+UTILITY = 0.1
+
+# Points when the player takes part in the event (killer, assist…).
+[scoring.events]
+ChampionKill = 6.0
+Multikill = 4.0
+FirstBlood = 3.0
+DragonKill = 3.0
+BaronKill = 4.0
+HeraldKill = 3.0
+TurretKilled = 2.0
+InhibKilled = 3.0
+
+# Objective windows (`at` = game time in s). Examples: check them for the current season.
+[[scoring.objectives]]
+name = "First dragon"
+at = 300
+roles = ["JUNGLE", "UTILITY"]
+bonus = 1.5
+
+[[scoring.objectives]]
+name = "Baron"
+at = 1200
+roles = ["JUNGLE", "UTILITY"]
+bonus = 1.5
+
+
+[vision]
+enabled = true
+interval = 0.25                          # seconds between two minimap reads
+minimap = [0.861, 0.753, 0.994, 0.988]   # minimap area [x0, y0, x1, y1] as fractions of the image (calibrated for 16:9)
+red_h_low = 8
+red_h_high = 170
+blue_h = [95, 125]
+ring_s_min = 110
+ring_v_min = 110
+white_s_max = 45
+white_v_min = 200
+icon_r_min = 0.032
+icon_r_max = 0.05
+ring_coverage = 0.8
+hough_sensitivity = 10
+camera_min = 0.12
+camera_max = 0.55
+near_radius = 0.2                        # "nearby enemy" = closer than this fraction of the minimap to the camera
+together_dist = 0.15                     # two players' cameras closer than this = same fight (no SPLIT)
+w_enemy_near = 1.2                       # bonus per nearby enemy ABOVE the player's usual count
+max_enemies = 5
+stale_after = 1.5
+enemy_champions = []                     # force the enemy champions (replays); [] = read from the game API
+portraits_dir = "data/portraits"
+portrait_strong = 0.8
+portrait_weak = 0.5
+portrait_ring = 0.45
+portrait_learn = 0.65
+smooth_window = 0.75
+w_enemy_approach = 0.8
+approach_window = 1.5
+baseline_window = 60.0
+black_level = 4.0

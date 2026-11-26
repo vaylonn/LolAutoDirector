@@ -1,0 +1,7 @@
+requests>=2.31
+obsws-python>=1.7
+customtkinter>=5.2
+tomli>=2.0; python_version < "3.11"
+# Minimap vision (optional: disabled automatically without OpenCV)
+opencv-python>=4.8
+numpy>=1.24
